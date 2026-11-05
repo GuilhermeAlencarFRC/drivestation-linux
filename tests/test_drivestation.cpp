@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSettings>
@@ -139,7 +140,7 @@ private slots:
     window.resize(1024, 224);
     QTest::qWait(10);
     QCOMPARE(window.width(), 1024);
-    QCOMPARE(window.height(), 224);
+    QCOMPARE(window.height(), 200);
   }
 
   void uiPreferencesSurviveRestartWithoutConnectionState() {
@@ -188,7 +189,7 @@ private slots:
     auto* simulate = window.findChild<QCheckBox*>(QStringLiteral("simulateRobot"));
     auto* enable = window.findChild<QPushButton*>(QStringLiteral("enable"));
     QVERIFY(!enable->isEnabled());
-    QTest::mouseClick(simulate, Qt::LeftButton);
+    simulate->setChecked(true);
     QVERIFY(enable->isEnabled());
     QTest::mouseClick(enable, Qt::LeftButton);
     QVERIFY(window.session().enabled());
@@ -199,7 +200,13 @@ private slots:
     QVERIFY(window.session().emergencyStopped());
     QVERIFY(!window.session().enabled());
     QVERIFY(!enable->isEnabled());
-    QTest::mouseClick(window.findChild<QPushButton*>(QStringLiteral("resetDemo")), Qt::LeftButton);
+    QTest::mouseClick(window.findChild<QToolButton*>(QStringLiteral("consoleSettings")),
+                      Qt::LeftButton);
+    QApplication::processEvents();
+    auto* reset = window.findChild<QPushButton*>(QStringLiteral("resetDemo"));
+    QVERIFY(reset->isVisible());
+    QTest::mouseClick(reset, Qt::LeftButton);
+    window.findChild<QMenu*>(QStringLiteral("consoleMenu"))->hide();
     QVERIFY(!window.session().connected());
     QVERIFY(!window.session().emergencyStopped());
     QVERIFY(!simulate->isChecked());

@@ -10,7 +10,7 @@ funcionamento do recurso correspondente com um robô real.
 
 | Área | Estado atual | Evidência e pendências |
 | --- | --- | --- |
-| Estrutura visual | Painel compacto navegável | Capturas renderizadas; comparação exata com NI 2026 pendente |
+| Estrutura visual | Painel de 1024 × 200, modos retangulares e organização da NI | Capturas e medidas conferidas com imagens oficiais; comparação exata com NI 2026 pendente |
 | Operação | Quatro modos; sequência Practice demonstrativa com cinco segmentos | Fronteiras, durações zero, conclusão e A-Stop testados; sem protocolo ou sons |
 | Habilitação | Enable/Disable, A-Stop e E-Stop locais | Cancelamento em cada fase e retomada prevista de A-Stop testados; sem transporte |
 | Teclado | Atalhos dentro da aplicação | Enter, Space, Backspace e combinação de habilitação testados; captura global pendente |

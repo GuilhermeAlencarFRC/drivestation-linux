@@ -12,6 +12,10 @@ cancelamento em todas as fases, tempo restante e aviso de habilitação futura.
 As duas suítes locais somam 67 cenários aprovados, contando as linhas de dados
 parametrizadas. Veja a [validação de Practice](validacao-practice.md).
 
+A prévia 0.3.0 aproxima o painel da organização da NI: 1024 × 200, modos
+retangulares, ícones cinza/ciano, console com engrenagem e controles locais
+no menu. Veja a [decisão visual](decisoes/0003-fidelidade-visual.md).
+
 O marco 1 ainda exige uma referência exata da NI 2026. O marco 2 tem uma entrega
 executável, com comparação visual final pendente. O motor de Practice avança
 o marco 3, mas a demonstração não valida controle de um robô nem suspensão

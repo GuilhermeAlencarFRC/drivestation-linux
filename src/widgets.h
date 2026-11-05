@@ -38,6 +38,14 @@ private:
   bool connected_ = false;
 };
 
+class PovIndicator : public QWidget {
+public:
+  explicit PovIndicator(QWidget* parent = nullptr);
+
+protected:
+  void paintEvent(QPaintEvent*) override;
+};
+
 class TelemetryChart : public QWidget {
 public:
   explicit TelemetryChart(QWidget* parent = nullptr);

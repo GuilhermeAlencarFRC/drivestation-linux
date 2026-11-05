@@ -14,10 +14,10 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
+class QMenu;
 class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
-class QRadioButton;
 class QSpinBox;
 class QStackedWidget;
 class QToolButton;
@@ -49,7 +49,7 @@ private:
   QWidget* createStatus();
   QWidget* createMessages();
   QWidget* createCharts();
-  QWidget* createFooter();
+  QWidget* createDemoControls();
   void refresh();
   void savePreferences();
   void appendMessage(const QString& message);
@@ -68,7 +68,7 @@ private:
   QStackedWidget* pages_ = nullptr;
   std::array<QToolButton*, 5> tabButtons_{};
   std::array<QToolButton*, 3> viewButtons_{};
-  std::array<QRadioButton*, 4> modeButtons_{};
+  std::array<QPushButton*, 4> modeButtons_{};
   QPushButton* enable_ = nullptr;
   QPushButton* disable_ = nullptr;
   QPushButton* stop_ = nullptr;
@@ -76,7 +76,7 @@ private:
   QPushButton* reset_ = nullptr;
   QLabel* elapsed_ = nullptr;
   QLabel* elapsedCaption_ = nullptr;
-  QLabel* phaseRemaining_ = nullptr;
+  QMenu* controlsMenu_ = nullptr;
   QLabel* team_ = nullptr;
   QLabel* voltage_ = nullptr;
   QLabel* status_ = nullptr;
@@ -91,8 +91,7 @@ private:
   QCheckBox* simulate_ = nullptr;
   QListWidget* devices_ = nullptr;
   std::array<QProgressBar*, 6> axes_{};
-  std::array<QLabel*, 8> buttons_{};
-  QLabel* usbSource_ = nullptr;
+  std::array<QLabel*, 12> buttons_{};
   QLabel* diagnostics_ = nullptr;
   QWidget* messagePanel_ = nullptr;
   QWidget* chartPanel_ = nullptr;

@@ -132,6 +132,24 @@ void Battery::paintEvent(QPaintEvent*) {
   }
 }
 
+PovIndicator::PovIndicator(QWidget* parent) : QWidget(parent) {
+  setFixedSize(42, 48);
+  setAccessibleName(QStringLiteral("POV unavailable"));
+  setToolTip(QStringLiteral("Physical POV input is not implemented."));
+}
+
+void PovIndicator::paintEvent(QPaintEvent*) {
+  QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setPen(Qt::NoPen);
+  painter.setBrush(QColor("#303030"));
+  for (int i = 0; i < 8; ++i) {
+    const double angle = i * 3.14159265358979323846 / 4;
+    painter.drawEllipse(QPointF(21 + std::sin(angle) * 14, 23 - std::cos(angle) * 14), 4, 4);
+  }
+  painter.drawEllipse(QPointF(21, 23), 4, 4);
+}
+
 TelemetryChart::TelemetryChart(QWidget* parent) : QWidget(parent) {
   setMinimumSize(145, 115);
   setAccessibleName(QStringLiteral("Simulated trip time and battery history"));

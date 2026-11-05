@@ -8,7 +8,7 @@ pelas abas, salvar preferências e executar uma sequência de prática demonstra
 com A-Stop. Comunicação com roboRIO e leitura de controles físicos ainda não
 foram implementadas.
 
-![Prévia offline da aba Operation](docs/images/operation.png)
+![Prévia da aba Operation no formato da NI](docs/images/ni-operation.png)
 
 ## Objetivo
 
@@ -35,8 +35,8 @@ tem como alvo a experiência anterior da NI e o ecossistema roboRIO.
 
 Dependências: compilador C++17, CMake 3.21 ou posterior, Ninja e os módulos
 Widgets e Test do Qt 6.4 ou posterior. Não há downloads automáticos no build.
-O ambiente validado até agora é Arch Linux x86_64 com Qt 6.12.0 e GCC 16.2.1.
-A versão mínima declarada do Qt ainda não foi testada.
+O ambiente local validado é Arch Linux x86_64 com Qt 6.12.0 e GCC 16.2.1.
+O CI também passou no Ubuntu 24.04 com Qt 6.4.2; a versão 6.4.0 exata não foi testada.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -60,7 +60,8 @@ O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
 - À direita, Messages, Charts e Both alternam a visualização.
 - Setup salva equipe, dashboard, dados de jogo e tempos de prática. A seleção
   de dashboard é uma preferência; não inicia outro aplicativo neste marco.
-- **Simulate robot** ativa dados gerados localmente. Enable/Disable e E-Stop
+- A engrenagem do console abre os controles locais; `F10` também abre esse menu.
+- **Simulate robot**, nesse menu, ativa dados gerados localmente. Enable/Disable e E-Stop
   alteram apenas essa demonstração. Não são enviados comandos ao robô.
 - `Enter` desabilita a demonstração; `Space` trava E-Stop dentro da aplicação.
   Segurar `[`, `]` e `\` habilita a demonstração fora dos campos de texto.
@@ -69,16 +70,16 @@ O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
 
 ## Practice na demonstração
 
-Ative **Simulate robot**, selecione **Practice** e pressione **Enable**. Os tempos
+Abra a engrenagem (ou `F10`), ative **Simulate robot**, selecione **Practice** e pressione **Enable**. Os tempos
 de Setup controlam os cinco segmentos consecutivos: Countdown → Autonomous →
 Delay → Teleoperated → End Game. O último segmento continua em Teleop. Os padrões
 existentes são preservados; eles não definem as regras de duração de uma temporada.
 
 Countdown e Delay ficam desabilitados. Os outros segmentos habilitam a sessão
-local e a sequência termina desabilitada. **Sequence Time** inclui as esperas;
-**Phase Left** mostra o tempo restante do segmento.
+local e a sequência termina desabilitada. O cronômetro inclui as esperas;
+seu tooltip mostra o tempo restante do segmento.
 
-O botão **A-Stop** e `Backspace`, fora dos campos de texto, interrompem somente
+O botão **A-Stop**, no menu, e `Backspace`, fora dos campos de texto, interrompem somente
 Autonomous. O relógio continua e Teleop retoma automaticamente. O status laranja
 e **WILL ENABLE** indicam habilitação futura.
 
@@ -89,10 +90,10 @@ que um segundo cancela a sessão em vez de avançar silenciosamente pelas fases.
 Nada é retomado sem um novo Enable explícito, exceto a retomada prevista de um
 A-Stop ainda em execução.
 
-![Practice aguardando habilitação na demonstração](docs/images/practice-countdown.png)
+![Practice aguardando habilitação na demonstração](docs/images/ni-practice-countdown.png)
 
-Veja as capturas de [A-Stop](docs/images/practice-astop.png) e
-[Teleop retomado](docs/images/practice-teleop.png), a
+Veja as capturas de [A-Stop](docs/images/ni-practice-astop.png) e
+[Teleop retomado](docs/images/ni-practice-teleop.png), a
 [decisão de comportamento](docs/decisoes/0002-practice-local.md) e a
 [validação](docs/validacao-practice.md).
 
@@ -107,11 +108,12 @@ QT_QPA_PLATFORM=offscreen ./build/drivestation-linux --screenshot /tmp/drivestat
 ```
 
 `--screenshot` requer um caminho novo e preserva arquivos existentes.
-Veja também [Setup](docs/images/setup.png) e [USB com dados simulados](docs/images/usb-demo.png).
+Veja também [Setup](docs/images/ni-setup.png), [USB](docs/images/ni-usb.png) e
+o [menu de controles locais](docs/images/ni-menu.png).
 
 ## Desenvolvimento e limitações
 
-O painel tem 224 pixels lógicos de altura, incluindo o aviso da prévia, e largura
+O painel tem 200 pixels lógicos de altura e largura
 mínima de 1024 pixels. O layout usa como referência inicial as imagens da
 documentação WPILib, que incluem versões anteriores da NI; a comparação com uma
 versão exata da NI 2026 continua pendente.
@@ -126,6 +128,8 @@ validados. O núcleo de operação real e o protocolo terão testes próprios.
 - [Plano de desenvolvimento](docs/roadmap.md)
 - [Referências técnicas](docs/referencias.md)
 - [Decisão de stack e critérios da prévia](docs/decisoes/0001-desktop-qt.md)
+- [Ajustes de fidelidade visual](docs/decisoes/0003-fidelidade-visual.md)
+- [Validação da interface 0.3.0](docs/validacao-visual.md)
 - [Validação da primeira prévia](docs/validacao-previa.md)
 - [Workflows de CI, análise e pacote Linux](docs/workflows.md)
 

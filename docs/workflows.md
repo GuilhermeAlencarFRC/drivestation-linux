@@ -20,3 +20,9 @@ e plugins Qt 6 instalados no sistema; ele não é um AppImage.
 
 Os testes de CI continuam sendo da demonstração local. Uma execução aprovada
 não comprova compatibilidade física com roboRIO ou autorização de uso em FMS.
+
+Primeiras execuções verificadas no commit `cff5691`:
+[Debug/Release](https://github.com/GuilhermeAlencarFRC/drivestation-linux/actions/runs/42089129171),
+[CodeQL](https://github.com/GuilhermeAlencarFRC/drivestation-linux/actions/runs/42089129067) e
+[pacote Linux](https://github.com/GuilhermeAlencarFRC/drivestation-linux/actions/runs/42089120513)
+concluíram com sucesso.

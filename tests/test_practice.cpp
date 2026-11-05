@@ -6,11 +6,13 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSpinBox>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolButton>
 #include <QtTest>
 #include <limits>
 
@@ -31,7 +33,7 @@ void prepareWindow(ds::MainWindow& window) {
   window.findChild<QTimer*>(QStringLiteral("demoTicker"))->stop();
   QApplication::processEvents();
   window.findChild<QCheckBox*>(QStringLiteral("simulateRobot"))->setChecked(true);
-  QTest::mouseClick(window.findChild<QRadioButton*>(QStringLiteral("mode2")), Qt::LeftButton);
+  QTest::mouseClick(window.findChild<QPushButton*>(QStringLiteral("mode2")), Qt::LeftButton);
 }
 } // namespace
 
@@ -296,7 +298,7 @@ private slots:
     advanceSession(window.session(), 3000);
     QVERIFY(window.session().enabled());
     QCOMPARE(window.session().practice().phase(), Phase::Teleoperated);
-    QVERIFY(window.findChild<QRadioButton*>(QStringLiteral("mode2"))->isChecked());
+    QVERIFY(window.findChild<QPushButton*>(QStringLiteral("mode2"))->isChecked());
   }
 
   void uiConfigurationChangesCancelPendingEnable_data() {
@@ -334,6 +336,29 @@ private slots:
     QCOMPARE(window.session().practice().phase(), Phase::Cancelled);
     advanceSession(window.session(), 20000);
     QVERIFY(!window.session().enabled());
+  }
+
+  void consoleMenuPreservesPracticeAndExposesSimulationControls() {
+    QTemporaryDir directory;
+    ds::MainWindow window(ds::PreferenceStore(directory.filePath(QStringLiteral("menu.ini"))));
+    prepareWindow(window);
+    window.session().enable();
+    auto* settings = window.findChild<QToolButton*>(QStringLiteral("consoleSettings"));
+    auto* menu = window.findChild<QMenu*>(QStringLiteral("consoleMenu"));
+    QVERIFY(settings);
+    QVERIFY(menu);
+    QVERIFY(!window.findChild<QCheckBox*>(QStringLiteral("simulateRobot"))->isVisible());
+    QTest::mouseClick(settings, Qt::LeftButton);
+    QApplication::processEvents();
+    QVERIFY(menu->isVisible());
+    QVERIFY(window.findChild<QCheckBox*>(QStringLiteral("simulateRobot"))->isVisible());
+    QCOMPARE(window.session().practice().phase(), Phase::Countdown);
+    menu->hide();
+    QApplication::processEvents();
+    QCOMPARE(window.session().practice().phase(), Phase::Countdown);
+    QTest::keyClick(&window, Qt::Key_Space);
+    QVERIFY(window.session().emergencyStopped());
+    QVERIFY(!window.session().busy());
   }
 };
 
