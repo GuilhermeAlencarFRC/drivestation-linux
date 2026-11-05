@@ -1,5 +1,6 @@
 #pragma once
 
+#include "controller_hub.h"
 #include "demo_session.h"
 #include "preferences.h"
 
@@ -26,13 +27,17 @@ namespace ds {
 class Battery;
 class Lamp;
 class TelemetryChart;
+class PovIndicator;
+class RumbleBar;
 
 class MainWindow : public QWidget {
   Q_OBJECT
 public:
-  explicit MainWindow(PreferenceStore store = PreferenceStore(), QWidget* parent = nullptr);
+  explicit MainWindow(PreferenceStore store = PreferenceStore(), QWidget* parent = nullptr,
+                      std::unique_ptr<ControllerBackend> backend = makeSdlControllerBackend());
   ~MainWindow() override;
   DemoSession& session() { return session_; }
+  ControllerHub& controllers() { return controllers_; }
   void selectTab(int tab);
   void selectRightView(int view);
 
@@ -51,6 +56,9 @@ private:
   QWidget* createCharts();
   QWidget* createDemoControls();
   void refresh();
+  void refreshUsb();
+  void stopRumble();
+  void updateRumble();
   void savePreferences();
   void appendMessage(const QString& message);
   void requestEnable();
@@ -59,6 +67,8 @@ private:
   PreferenceStore store_;
   Preferences preferences_;
   DemoSession session_;
+  ControllerHub controllers_;
+  bool stoppingRumble_ = false;
   QElapsedTimer tickClock_;
   double lastChartSample_ = -1;
   bool settingsError_ = false;
@@ -92,6 +102,8 @@ private:
   QListWidget* devices_ = nullptr;
   std::array<QProgressBar*, 6> axes_{};
   std::array<QLabel*, 12> buttons_{};
+  PovIndicator* pov_ = nullptr;
+  std::array<RumbleBar*, 2> rumble_{};
   QLabel* diagnostics_ = nullptr;
   QWidget* messagePanel_ = nullptr;
   QWidget* chartPanel_ = nullptr;

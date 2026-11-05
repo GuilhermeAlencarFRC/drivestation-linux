@@ -3,10 +3,10 @@
 Reimplementação independente para Linux da **NI FRC Driver Station**, com foco
 em fidelidade visual e funcional à experiência usada com **roboRIO**.
 
-**Estado atual: prévia desktop com Practice local.** A interface permite navegar
-pelas abas, salvar preferências e executar uma sequência de prática demonstrativa
-com A-Stop. Comunicação com roboRIO e leitura de controles físicos ainda não
-foram implementadas.
+**Estado atual: prévia desktop com Practice local e entrada Linux por SDL2.**
+Controles são detectados em seis slots, com eixos, botões, POV e teste de rumble.
+A integração foi exercitada com dispositivos virtuais SDL; modelos físicos ainda
+precisam de validação. Comunicação com roboRIO continua pendente.
 
 ![Prévia da aba Operation no formato da NI](docs/images/ni26-operation.png)
 
@@ -35,9 +35,15 @@ tem como alvo a experiência anterior da NI e o ecossistema roboRIO.
 ## Compilar e executar
 
 Dependências: compilador C++17, CMake 3.21 ou posterior, Ninja e os módulos
-Widgets e Test do Qt 6.4 ou posterior. Não há downloads automáticos no build.
+Widgets e Test do Qt 6.4 ou posterior, além de SDL2 2.24 ou posterior. Não há downloads automáticos no build.
 O ambiente local validado é Arch Linux x86_64 com Qt 6.12.0 e GCC 16.2.1.
 O CI também passou no Ubuntu 24.04 com Qt 6.4.2; a versão 6.4.0 exata não foi testada.
+
+No Ubuntu 24.04:
+
+```sh
+sudo apt-get install cmake ninja-build g++ qt6-base-dev libsdl2-dev
+```
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -53,7 +59,7 @@ cmake --install build --prefix "$HOME/.local"
 ```
 
 O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
-ícone nos diretórios correspondentes. O binário depende do Qt instalado.
+ícone nos diretórios correspondentes. O binário depende do Qt e do SDL2 instalados.
 
 ## Usar a prévia
 
@@ -68,6 +74,37 @@ O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
   Segurar `[`, `]` e `\` habilita a demonstração fora dos campos de texto.
 - **Reset demo** limpa a sessão e a desconecta. Reconectar, mudar modo, equipe
   ou estação não reabilita a demonstração automaticamente.
+
+## Controles no Linux
+
+Na aba **USB Devices**, selecione um dos seis slots para inspecionar a entrada.
+Conectar ou remover um dispositivo atualiza a lista; os demais mantêm seus índices.
+**Rescan** e `F1` repetem a descoberta. Dispositivos excedentes aguardam um slot livre.
+
+A tela mostra os seis primeiros eixos normalizados em −1…1, os doze primeiros
+botões e o primeiro POV. O tooltip informa os totais. A leitura conserva até
+256 entradas de cada tipo, sem remapeamento automático para Xbox. Os números
+são os índices do dispositivo, não uma confirmação de equivalência ao mapeamento
+que a NI aplica a cada controle.
+
+As barras de **Rumble** ficam disponíveis quando o dispositivo informa suporte.
+Mantenha a barra pressionada para testar; a superior corresponde ao motor direito
+(alta frequência) e a inferior ao esquerdo (baixa frequência). Liberar, mudar de
+slot ou aba, perder ativação, desconectar ou fechar interrompe o efeito.
+Os comandos pedem duração de 100 ms e são renovados enquanto a barra está pressionada;
+a duração física depende do driver e do dispositivo. Falha no efeito o desabilita
+até um novo Rescan ou reconexão.
+
+**Joysticks** indica entrada Linux disponível, independentemente da simulação do
+robô. Mudança de dispositivos ou perda de leitura cancela a sessão demonstrativa,
+inclusive Practice em espera. Selecionar outro slot apenas muda a inspeção.
+A demo não cria dispositivos, eixos ou botões fictícios. Nenhuma permissão de
+`/dev/input` é alterada pelo aplicativo.
+
+![Entrada de um joystick virtual SDL em teste, sem conexão com robô](docs/images/ni26-usb-sdl-virtual.png)
+
+Veja a [decisão de entrada](docs/decisoes/0005-entrada-sdl.md) e os
+[resultados e limites dos testes](docs/validacao-usb.md).
 
 ## Practice na demonstração
 
@@ -85,7 +122,7 @@ Autonomous. O relógio continua e Teleop retoma automaticamente. O status laranj
 e **WILL ENABLE** indicam habilitação futura.
 
 **Disable** ou `Enter` cancelam tudo, inclusive Countdown e A-Stop. E-Stop,
-desconexão, perda de ativação da janela, fechamento, troca de modo, equipe,
+desconexão, perda de ativação da janela, fechamento, mudança de dispositivos USB, troca de modo, equipe,
 estação ou tempos também interrompem a execução. Um atraso de atualização maior
 que um segundo cancela a sessão em vez de avançar silenciosamente pelas fases.
 Nada é retomado sem um novo Enable explícito, exceto a retomada prevista de um
@@ -109,7 +146,7 @@ QT_QPA_PLATFORM=offscreen ./build/drivestation-linux --screenshot /tmp/drivestat
 ```
 
 `--screenshot` requer um caminho novo e preserva arquivos existentes.
-Veja também [Setup](docs/images/ni26-setup.png), [USB](docs/images/ni26-usb.png) e
+Veja também [Setup](docs/images/ni26-setup.png), [USB sem dispositivos](docs/images/ni26-usb-empty.png) e
 o [menu de controles locais](docs/images/ni26-menu.png).
 
 ## Desenvolvimento e limitações
@@ -119,7 +156,7 @@ mínima de 1024 pixels. O layout usa como referência inicial as imagens da
 documentação WPILib e capturas da NI 26.0. A comparação completa de todas as
 abas com essa versão continua pendente.
 
-Não há captura de teclado fora da aplicação, descoberta de USB, rumble,
+Não há captura de teclado fora da aplicação, ordenação persistente de controles,
 integração com dashboards, encaixe automático da janela ou
 transporte para robôs. Campos sem fonte de dados exibem indisponibilidade.
 Sons de Practice, suspensão física e a paridade exata com a NI ainda não foram

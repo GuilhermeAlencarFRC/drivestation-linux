@@ -1,5 +1,6 @@
 #include "widgets.h"
 
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <algorithm>
@@ -81,6 +82,7 @@ QIcon symbolIcon(Symbol symbol, const QColor& color) {
 
 Lamp::Lamp(QString text, QWidget* parent) : QWidget(parent), text_(std::move(text)) {
   setAccessibleName(text_);
+  setAccessibleDescription(QStringLiteral("Unavailable"));
   setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 }
 
@@ -88,8 +90,7 @@ void Lamp::setLit(bool lit) {
   if (lit_ == lit)
     return;
   lit_ = lit;
-  setAccessibleDescription(lit ? QStringLiteral("Simulated: present")
-                               : QStringLiteral("Unavailable"));
+  setAccessibleDescription(lit ? QStringLiteral("Present") : QStringLiteral("Unavailable"));
   update();
 }
 
@@ -135,19 +136,91 @@ void Battery::paintEvent(QPaintEvent*) {
 PovIndicator::PovIndicator(QWidget* parent) : QWidget(parent) {
   setFixedSize(42, 48);
   setAccessibleName(QStringLiteral("POV unavailable"));
-  setToolTip(QStringLiteral("Physical POV input is not implemented."));
+}
+
+void PovIndicator::setAngle(std::optional<int> angle) {
+  angle_ = angle;
+  const auto text = !angle       ? QStringLiteral("POV unavailable")
+                    : *angle < 0 ? QStringLiteral("POV centered")
+                                 : QStringLiteral("POV %1 degrees").arg(*angle);
+  setAccessibleName(text);
+  setToolTip(text);
+  update();
 }
 
 void PovIndicator::paintEvent(QPaintEvent*) {
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setPen(Qt::NoPen);
-  painter.setBrush(QColor("#303030"));
   for (int i = 0; i < 8; ++i) {
+    painter.setBrush(angle_ && *angle_ == i * 45 ? QColor("#56bb1d") : QColor("#303030"));
     const double angle = i * 3.14159265358979323846 / 4;
     painter.drawEllipse(QPointF(21 + std::sin(angle) * 14, 23 - std::cos(angle) * 14), 4, 4);
   }
+  painter.setBrush(angle_ && *angle_ == -1 ? QColor("#56bb1d") : QColor("#303030"));
   painter.drawEllipse(QPointF(21, 23), 4, 4);
+}
+
+RumbleBar::RumbleBar(QWidget* parent) : QWidget(parent), timer_(this) {
+  setFixedSize(40, 11);
+  timer_.setInterval(50);
+  connect(&timer_, &QTimer::timeout, this, [this] {
+    if (!held_ || !isVisible() || !isEnabled() || pulseClock_.restart() > 200) {
+      cancel();
+      return;
+    }
+    emit strengthChanged();
+  });
+}
+
+void RumbleBar::cancel() {
+  timer_.stop();
+  if (!held_ && strength_ == 0)
+    return;
+  held_ = false;
+  strength_ = 0;
+  update();
+  emit strengthChanged();
+}
+
+bool RumbleBar::event(QEvent* event) {
+  if (event->type() == QEvent::Hide || event->type() == QEvent::UngrabMouse ||
+      event->type() == QEvent::WindowDeactivate ||
+      (event->type() == QEvent::EnabledChange && !isEnabled()))
+    cancel();
+  return QWidget::event(event);
+}
+
+void RumbleBar::setPosition(double x) {
+  strength_ = static_cast<quint16>(std::clamp(x / std::max(1, width() - 1), 0.0, 1.0) * 65535);
+  update();
+  emit strengthChanged();
+}
+
+void RumbleBar::mousePressEvent(QMouseEvent* event) {
+  if (event->button() != Qt::LeftButton || !isEnabled())
+    return;
+  held_ = true;
+  pulseClock_.start();
+  timer_.start();
+  setPosition(event->position().x());
+  event->accept();
+}
+
+void RumbleBar::mouseMoveEvent(QMouseEvent* event) {
+  if (held_)
+    setPosition(event->position().x());
+}
+
+void RumbleBar::mouseReleaseEvent(QMouseEvent* event) {
+  if (event->button() == Qt::LeftButton)
+    cancel();
+}
+
+void RumbleBar::paintEvent(QPaintEvent*) {
+  QPainter painter(this);
+  painter.fillRect(rect(), QColor("#303030"));
+  painter.fillRect(QRectF(0, 0, width() * strength_ / 65535.0, height()), QColor("#56bb1d"));
 }
 
 TelemetryChart::TelemetryChart(QWidget* parent) : QWidget(parent) {

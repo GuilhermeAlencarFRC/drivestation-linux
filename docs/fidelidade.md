@@ -1,11 +1,11 @@
 # Matriz de fidelidade
 
 Referência: [NI FRC Driver Station documentada pela WPILib][ni-ds], com alvo
-inicial na temporada 2026 e no roboRIO. Registrar a versão exata da aplicação
-de referência antes de aprovar qualquer comparação visual.
+inicial na temporada 2026 e no roboRIO. Versão-alvo confirmada: 26.0.
+A comparação completa de todas as abas permanece pendente.
 
 Primeira prévia desktop implementada em C++/Qt 6. A validação descrita abaixo
-cobre somente a demonstração local. Uma tela desenhada não comprova o
+cobre a demonstração local e entrada por dispositivos virtuais SDL. Uma tela desenhada não comprova o
 funcionamento do recurso correspondente com um robô real.
 
 | Área | Estado atual | Evidência e pendências |
@@ -14,8 +14,8 @@ funcionamento do recurso correspondente com um robô real.
 | Operação | Quatro modos; sequência Practice demonstrativa com cinco segmentos | Fronteiras, durações zero, conclusão e A-Stop testados; sem protocolo ou sons |
 | Habilitação | Enable/Disable, A-Stop e E-Stop locais | Cancelamento em cada fase e retomada prevista de A-Stop testados; sem transporte |
 | Teclado | Atalhos dentro da aplicação | Enter, Space, Backspace e combinação de habilitação testados; captura global pendente |
-| Status | Equipe persistida; bateria e indicadores demonstrativos | Origem simulada identificada; sem recepção de dados reais |
-| Controles | Seis slots visíveis e entradas geradas na demonstração | Descoberta, ordenação, POV, rumble e hardware pendentes |
+| Status | Equipe persistida; bateria e estado do robô demonstrativos; Joysticks usa a entrada Linux | Sem recepção de dados reais do robô |
+| Controles | SDL2: descoberta, seis slots estáveis, eixos, botões, POV e rumble | Testes com dispositivos virtuais; modelos físicos, ordem persistente e equivalência de mapeamento NI pendentes |
 | Configuração | Preferências persistidas e tempos aplicados ao Practice local | Alterar tempos cancela a execução; execução de dashboard pendente |
 | Diagnóstico | Tela inicial com indisponibilidade explícita | Serviços, versões e ações no robô pendentes |
 | Console e gráficos | Mensagens locais e curvas simuladas | Histórico e escala disponíveis; logs e telemetria reais pendentes |
@@ -23,7 +23,8 @@ funcionamento do recurso correspondente com um robô real.
 
 Veja [procedimentos e limites da validação](validacao-previa.md). Nenhum item
 desta tabela representa validação de compatibilidade física com roboRIO.
-O [registro de Practice](validacao-practice.md) descreve os testes adicionais.
+Os registros de [Practice](validacao-practice.md) e [USB](validacao-usb.md)
+descrevem os testes adicionais.
 
 ## Como registrar a aprovação
 

@@ -1,9 +1,12 @@
 #pragma once
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QIcon>
+#include <QTimer>
 #include <QVector>
 #include <QWidget>
+#include <optional>
 
 namespace ds {
 
@@ -41,9 +44,38 @@ private:
 class PovIndicator : public QWidget {
 public:
   explicit PovIndicator(QWidget* parent = nullptr);
+  void setAngle(std::optional<int> angle);
+  std::optional<int> angle() const { return angle_; }
 
 protected:
   void paintEvent(QPaintEvent*) override;
+
+private:
+  std::optional<int> angle_;
+};
+
+class RumbleBar : public QWidget {
+  Q_OBJECT
+public:
+  explicit RumbleBar(QWidget* parent = nullptr);
+  quint16 strength() const { return strength_; }
+  void cancel();
+signals:
+  void strengthChanged();
+
+protected:
+  bool event(QEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
+  void mouseMoveEvent(QMouseEvent* event) override;
+  void mouseReleaseEvent(QMouseEvent* event) override;
+  void paintEvent(QPaintEvent*) override;
+
+private:
+  void setPosition(double x);
+  QTimer timer_;
+  QElapsedTimer pulseClock_;
+  quint16 strength_ = 0;
+  bool held_ = false;
 };
 
 class TelemetryChart : public QWidget {

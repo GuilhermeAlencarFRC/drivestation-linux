@@ -32,7 +32,7 @@ jobs:
       - name: Install Qt and build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y cmake ninja-build g++ qt6-base-dev
+          sudo apt-get install --no-install-recommends -y cmake ninja-build g++ qt6-base-dev libsdl2-dev
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:

@@ -82,8 +82,10 @@ QString formatTime(qint64 milliseconds) {
 }
 } // namespace
 
-MainWindow::MainWindow(PreferenceStore store, QWidget* parent)
-    : QWidget(parent), store_(std::move(store)), preferences_(store_.load()), session_(this) {
+MainWindow::MainWindow(PreferenceStore store, QWidget* parent,
+                       std::unique_ptr<ControllerBackend> backend)
+    : QWidget(parent), store_(std::move(store)), preferences_(store_.load()), session_(this),
+      controllers_(std::move(backend), this) {
   setObjectName(QStringLiteral("stationWindow"));
   setWindowTitle(
       QStringLiteral("DriveStation Linux %1 — Offline preview").arg(DRIVESTATION_VERSION));
@@ -169,10 +171,22 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent)
   connect(qApp, &QGuiApplication::applicationStateChanged, this,
           [this](Qt::ApplicationState state) {
             if (state != Qt::ApplicationActive) {
+              stopRumble();
               pressedKeys_.clear();
               session_.disable();
             }
           });
+  connect(&controllers_, &ControllerHub::topologyChanging, this, [this] {
+    stopRumble();
+    pressedKeys_.clear();
+    session_.disable();
+    appendMessage(QStringLiteral("USB devices changed or became unavailable. Demo disabled."));
+  });
+  connect(&controllers_, &ControllerHub::updated, this, &MainWindow::refreshUsb);
+  connect(&controllers_, &ControllerHub::errorOccurred, this,
+          [this](const QString& error) { appendMessage(QStringLiteral("USB: %1").arg(error)); });
+  connect(controlsMenu_, &QMenu::aboutToShow, this, &MainWindow::stopRumble);
+  controllers_.start();
   qApp->installEventFilter(this);
   auto* timer = new QTimer(this);
   timer->setObjectName(QStringLiteral("demoTicker"));
@@ -183,9 +197,13 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent)
   refresh();
 }
 
-MainWindow::~MainWindow() { qApp->removeEventFilter(this); }
+MainWindow::~MainWindow() {
+  stopRumble();
+  qApp->removeEventFilter(this);
+}
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+  stopRumble();
   pressedKeys_.clear();
   session_.disable();
   QWidget::closeEvent(event);
@@ -459,8 +477,12 @@ QWidget* MainWindow::createUsb() {
     devices_->addItem(QStringLiteral("%1  —").arg(i));
   left->addWidget(devices_, 1);
   auto* rescan = new QPushButton(QStringLiteral("Rescan (F1)"));
-  rescan->setEnabled(false);
-  rescan->setToolTip(QStringLiteral("Physical joystick discovery is not implemented."));
+  rescan->setObjectName(QStringLiteral("rescanControllers"));
+  rescan->setToolTip(QStringLiteral("Rescan Linux controllers. Existing slots stay in place."));
+  connect(rescan, &QPushButton::clicked, this, [this] {
+    stopRumble();
+    controllers_.rescan();
+  });
   left->addWidget(rescan);
   layout->addLayout(left, 1);
   auto* right = new QHBoxLayout;
@@ -470,9 +492,10 @@ QWidget* MainWindow::createUsb() {
   axesColumn->addWidget(label(QStringLiteral("Axes")));
   for (int i = 0; i < 6; ++i) {
     axes_[i] = new QProgressBar;
+    axes_[i]->setObjectName(QStringLiteral("axis%1").arg(i));
     axes_[i]->setRange(0, 200);
     axes_[i]->setFixedSize(70, 14);
-    axes_[i]->setAccessibleName(QStringLiteral("Simulated axis %1").arg(i));
+    axes_[i]->setAccessibleName(QStringLiteral("Axis %1").arg(i));
     axesColumn->addWidget(axes_[i]);
   }
   axesColumn->addStretch();
@@ -482,7 +505,8 @@ QWidget* MainWindow::createUsb() {
   buttonColumn->addWidget(label(QStringLiteral("Buttons")));
   for (int i = 0; i < 12; ++i) {
     buttons_[i] = label({});
-    buttons_[i]->setAccessibleName(QStringLiteral("Simulated button %1").arg(i + 1));
+    buttons_[i]->setObjectName(QStringLiteral("button%1").arg(i + 1));
+    buttons_[i]->setAccessibleName(QStringLiteral("Button %1").arg(i + 1));
     buttons_[i]->setAlignment(Qt::AlignCenter);
     buttons_[i]->setFixedSize(13, 8);
     buttonColumn->addWidget(buttons_[i]);
@@ -492,19 +516,28 @@ QWidget* MainWindow::createUsb() {
   auto* povColumn = new QVBoxLayout;
   povColumn->setSpacing(2);
   povColumn->addWidget(label(QStringLiteral("POV")));
-  povColumn->addWidget(new PovIndicator);
+  pov_ = new PovIndicator;
+  pov_->setObjectName(QStringLiteral("pov"));
+  povColumn->addWidget(pov_);
   povColumn->addStretch();
   povColumn->addWidget(label(QStringLiteral("Rumble")));
   for (int i = 0; i < 2; ++i) {
-    auto* rumble = new QProgressBar;
-    rumble->setFixedSize(40, 11);
-    rumble->setRange(0, 100);
-    rumble->setValue(0);
-    rumble->setTextVisible(false);
-    rumble->setEnabled(false);
-    rumble->setToolTip(QStringLiteral("Physical rumble is not implemented."));
-    povColumn->addWidget(rumble);
+    rumble_[i] = new RumbleBar;
+    rumble_[i]->setObjectName(i == 0 ? QStringLiteral("rumbleRight")
+                                     : QStringLiteral("rumbleLeft"));
+    rumble_[i]->setAccessibleName(i == 0 ? QStringLiteral("Right rumble")
+                                         : QStringLiteral("Left rumble"));
+    rumble_[i]->setToolTip(i == 0 ? QStringLiteral("Hold to test right (high frequency) rumble.")
+                                  : QStringLiteral("Hold to test left (low frequency) rumble."));
+    rumble_[i]->setEnabled(false);
+    connect(rumble_[i], &RumbleBar::strengthChanged, this, &MainWindow::updateRumble);
+    povColumn->addWidget(rumble_[i]);
   }
+  devices_->setCurrentRow(0);
+  connect(devices_, &QListWidget::currentRowChanged, this, [this] {
+    stopRumble();
+    refreshUsb();
+  });
   right->addLayout(povColumn);
   layout->addLayout(right, 1);
   return result;
@@ -563,6 +596,9 @@ QWidget* MainWindow::createStatus() {
                           QStringLiteral("Joysticks")};
   for (int i = 0; i < 3; ++i) {
     lamps_[i] = new Lamp(names[i]);
+    lamps_[i]->setObjectName(QStringLiteral("statusLamp%1").arg(i));
+    lamps_[i]->setToolTip(i == 2 ? QStringLiteral("At least one readable Linux controller.")
+                                 : QStringLiteral("Local robot simulation. No network data."));
     layout->addWidget(lamps_[i]);
   }
   layout->addStretch();
@@ -691,6 +727,8 @@ QWidget* MainWindow::createDemoControls() {
 void MainWindow::selectTab(int tab) {
   if (tab < 0 || tab >= static_cast<int>(tabButtons_.size()))
     return;
+  if (tab != 3)
+    stopRumble();
   pages_->setCurrentIndex(tab);
   tabButtons_[tab]->setChecked(true);
 }
@@ -733,8 +771,8 @@ void MainWindow::refresh() {
   voltage_->setText(connected ? QStringLiteral("%1 V").arg(session_.voltage(), 0, 'f', 2)
                               : QStringLiteral("--.--"));
   battery_->setVoltage(session_.voltage(), connected);
-  for (auto* lamp : lamps_)
-    lamp->setLit(connected);
+  lamps_[0]->setLit(connected);
+  lamps_[1]->setLit(connected);
   status_->setText(session_.status());
   const bool practice = session_.mode() == DemoSession::Mode::Practice;
   const bool pending = practice && connected && session_.practice().pendingEnable();
@@ -787,21 +825,75 @@ void MainWindow::refresh() {
                             .arg(connected ? QStringLiteral("Simulated (no network)")
                                            : QStringLiteral("Not connected"),
                                  DRIVESTATION_VERSION));
-  devices_->item(0)->setText(connected ? QStringLiteral("0  Demo controller")
-                                       : QStringLiteral("0  —"));
-  devices_->item(0)->setForeground(connected ? QColor("#72e22d") : QColor("#bcbcbc"));
-  devices_->setToolTip(connected ? QStringLiteral("Simulated inputs. No physical devices read.")
-                                 : QStringLiteral("Physical USB discovery is not implemented."));
+  refreshUsb();
+}
+
+void MainWindow::refreshUsb() {
+  const auto& snapshot = controllers_.controllerSlots();
+  lamps_[2]->setLit(controllers_.anyReadable());
+  for (int i = 0; i < ControllerHub::SlotCount; ++i) {
+    const auto& slot = snapshot[i];
+    auto* item = devices_->item(i);
+    item->setText(
+        QStringLiteral("%1  %2").arg(i).arg(slot.device ? slot.device->name : QStringLiteral("—")));
+    item->setForeground(slot.reading ? QColor("#72e22d") : QColor("#bcbcbc"));
+    item->setToolTip(slot.error.isEmpty() ? item->text() : slot.error);
+  }
+  const int selected = devices_->currentRow();
+  const auto* reading =
+      selected >= 0 && selected < ControllerHub::SlotCount && snapshot[selected].reading
+          ? &*snapshot[selected].reading
+          : nullptr;
+  const QString summary =
+      reading ? QStringLiteral("Linux inputs: %1 axes, %2 buttons, %3 POVs. Displays axes 0–5, "
+                               "buttons 1–12 and POV 0.")
+                    .arg(reading->axes.size())
+                    .arg(reading->buttons.size())
+                    .arg(reading->povs.size())
+              : QStringLiteral(
+                    "No readable controller selected. Robot simulation does not create USB input.");
+  devices_->setToolTip(summary + QStringLiteral(" Extra devices outside the six slots: %1.")
+                                     .arg(controllers_.unassignedCount()));
   for (int i = 0; i < 6; ++i) {
-    const double value = connected ? std::sin(session_.simulationSeconds() + i * 0.7) * 0.6 : 0;
-    axes_[i]->setValue(connected ? static_cast<int>((value + 1) * 100) : 0);
-    axes_[i]->setFormat(connected ? QString::number(value, 'f', 2) : QStringLiteral("—"));
+    const bool available = reading && i < reading->axes.size();
+    const double value = available ? normalizedAxis(reading->axes[i]) : 0;
+    axes_[i]->setValue(available ? qRound((value + 1) * 100) : 0);
+    axes_[i]->setFormat(available ? QString::number(value, 'f', 2) : QStringLiteral("—"));
+    axes_[i]->setAccessibleDescription(available ? QString::number(value, 'f', 4)
+                                                 : QStringLiteral("Unavailable"));
   }
   for (int i = 0; i < 12; ++i) {
-    const bool pressed = connected && (static_cast<int>(session_.simulationSeconds()) % 12 == i);
+    const bool available = reading && i < reading->buttons.size();
+    const bool pressed = available && reading->buttons[i];
     buttons_[i]->setStyleSheet(pressed ? QStringLiteral("background: #56bb1d; color: #111;")
                                        : QStringLiteral("background: #303030; color: #888;"));
+    buttons_[i]->setAccessibleDescription(!available ? QStringLiteral("Unavailable")
+                                          : pressed  ? QStringLiteral("Pressed")
+                                                     : QStringLiteral("Released"));
   }
+  pov_->setAngle(reading && !reading->povs.isEmpty() ? std::optional<int>(reading->povs[0])
+                                                     : std::nullopt);
+  for (auto* bar : rumble_)
+    bar->setEnabled(reading && reading->supportsRumble);
+}
+
+void MainWindow::stopRumble() {
+  if (stoppingRumble_)
+    return;
+  stoppingRumble_ = true;
+  for (auto* bar : rumble_)
+    if (bar)
+      bar->cancel();
+  controllers_.stopRumble();
+  stoppingRumble_ = false;
+}
+
+void MainWindow::updateRumble() {
+  if (stoppingRumble_)
+    return;
+  if (pages_->currentIndex() != 3 || !isVisible() ||
+      !controllers_.rumble(devices_->currentRow(), rumble_[1]->strength(), rumble_[0]->strength()))
+    stopRumble();
 }
 
 void MainWindow::tick() {
@@ -818,9 +910,12 @@ void MainWindow::tick() {
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+  if (event->type() == QEvent::Hide && watched == this)
+    stopRumble();
   if (event->type() == QEvent::ApplicationDeactivate ||
       (event->type() == QEvent::WindowDeactivate && watched == this &&
        !QApplication::activePopupWidget())) {
+    stopRumble();
     pressedKeys_.clear();
     session_.disable();
   }
@@ -837,6 +932,11 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
   if (event->type() == QEvent::KeyRelease) {
     pressedKeys_.remove(key->key());
     return QWidget::eventFilter(watched, event);
+  }
+  if (key->key() == Qt::Key_F1) {
+    stopRumble();
+    controllers_.rescan();
+    return true;
   }
   const bool editing = qobject_cast<QLineEdit*>(widget) || qobject_cast<QSpinBox*>(widget);
   if (key->key() == Qt::Key_Backspace && !editing && session_.autonomousStop()) {

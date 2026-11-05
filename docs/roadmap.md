@@ -23,7 +23,11 @@ cor aos elementos observados nas capturas dessa versão. A
 O marco 1 ainda exige capturas de todas as abas da NI 26.0. O marco 2 tem uma entrega
 executável, com comparação visual final pendente. O motor de Practice avança
 o marco 3, mas a demonstração não valida controle de um robô nem suspensão
-física. Dispositivos e transporte dos marcos 4 e 5 continuam pendentes.
+física. A prévia 0.4.0 implementa entrada por SDL2 com descoberta, seis slots
+estáveis, eixos, botões, POV e rumble. O marco 4 tem testes com dispositivos
+virtuais, mas ainda requer validação em modelos físicos, ordem persistente e
+mapeamento equivalente ao da NI. O transporte do marco 5 continua pendente.
+Veja a [validação de USB](validacao-usb.md).
 
 ## 1. Fixar a referência
 
