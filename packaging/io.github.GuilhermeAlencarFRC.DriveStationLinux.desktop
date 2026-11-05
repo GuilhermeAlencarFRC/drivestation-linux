@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DriveStation Linux
+Comment=Offline preview of an independent FRC Driver Station for Linux
+Exec=drivestation-linux
+Icon=drivestation-linux
+Terminal=false
+Categories=Education;Science;Robotics;
+StartupWMClass=drivestation-linux
