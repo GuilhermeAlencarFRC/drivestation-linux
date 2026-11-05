@@ -4,21 +4,25 @@ Referência: [NI FRC Driver Station documentada pela WPILib][ni-ds], com alvo
 inicial na temporada 2026 e no roboRIO. Registrar a versão exata da aplicação
 de referência antes de aprovar qualquer comparação visual.
 
-Todos os itens abaixo estão **planejados**, sem implementação ou validação.
-Uma tela desenhada não comprova o funcionamento do recurso correspondente.
+Primeira prévia desktop implementada em C++/Qt 6. A validação descrita abaixo
+cobre somente a demonstração local. Uma tela desenhada não comprova o
+funcionamento do recurso correspondente com um robô real.
 
-| Área | Alvo de reprodução | Evidência necessária |
+| Área | Estado atual | Evidência e pendências |
 | --- | --- | --- |
-| Estrutura visual | Painel compacto, navegação e hierarquia dos indicadores | Capturas comparativas na mesma escala |
-| Operação | Teleoperated, Autonomous, Practice e Test | Transições verificadas por cenário |
-| Habilitação | Enable, Disable e indicação inequívoca do estado | Testes do núcleo de estados e da interface |
-| Teclado | Atalhos equivalentes e parada de emergência | Testes com foco, sem foco e após suspensão |
-| Status | Equipe, bateria, comunicação e código do robô | Valores confrontados com uma fonte de teste |
-| Controles | Até seis slots, ordem dos dispositivos e inspeção de entradas | Testes com controles físicos e desconexão |
-| Configuração | Equipe, dashboard, dados de jogo e tempos de prática | Persistência e aplicação verificadas |
-| Diagnóstico | Conexões, versões e informações úteis do robô | Dados reais identificados e reproduzíveis |
-| Console e gráficos | Mensagens e histórico operacional | Comparação com eventos conhecidos |
-| Desktop Linux | Janela, posicionamento, escala e leitura de dispositivos | Testes nas sessões e distribuições declaradas |
+| Estrutura visual | Painel compacto navegável | Capturas renderizadas; comparação exata com NI 2026 pendente |
+| Operação | Seleção dos quatro modos; demonstração em Teleoperated, Autonomous e Test | Transições locais testadas; sequência Practice pendente |
+| Habilitação | Enable/Disable e E-Stop locais | Bloqueios, reconexão, mudança de modo e reset testados; sem transporte |
+| Teclado | Atalhos dentro da aplicação | Enter, Space e combinação de habilitação testados; captura global pendente |
+| Status | Equipe persistida; bateria e indicadores demonstrativos | Origem simulada identificada; sem recepção de dados reais |
+| Controles | Seis slots visíveis e entradas geradas na demonstração | Descoberta, ordenação, POV, rumble e hardware pendentes |
+| Configuração | Preferências persistidas | Reinício, valores inválidos e falha de gravação testados; execução de dashboard e prática pendentes |
+| Diagnóstico | Tela inicial com indisponibilidade explícita | Serviços, versões e ações no robô pendentes |
+| Console e gráficos | Mensagens locais e curvas simuladas | Histórico e escala disponíveis; logs e telemetria reais pendentes |
+| Desktop Linux | Janela flutuante e instalação CMake | Renderização offscreen 1x/2x e inicialização Wayland verificadas; demais ambientes e docking pendentes |
+
+Veja [procedimentos e limites da validação](validacao-previa.md). Nenhum item
+desta tabela representa validação de compatibilidade física com roboRIO.
 
 ## Como registrar a aprovação
 

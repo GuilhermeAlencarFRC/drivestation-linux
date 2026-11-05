@@ -10,7 +10,8 @@ principais, o painel central persistente e as três opções de visualização �
 direita. Preferências devem sobreviver à reinicialização.
 
 Dados de demonstração são explicitamente simulados. O executável deste marco
-não abre sockets, não descobre robôs e não envia comandos ao roboRIO.
+não implementa sockets de comunicação com robôs, não descobre robôs e não envia
+comandos ao roboRIO.
 
 ## Decisão
 

@@ -1,5 +1,17 @@
 # Plano de desenvolvimento
 
+## Situação em 2026-11-05
+
+A primeira prévia desktop está implementada no commit `abb1f18`: C++17, Qt
+Widgets, cinco abas principais, três visualizações à direita, preferências e
+sessão local de demonstração. Os 11 cenários de teste passaram; instalação
+isolada, renderização offscreen e inicialização Wayland foram verificadas.
+
+O marco 1 ainda exige uma referência exata da NI 2026. O marco 2 tem uma primeira
+entrega executável, com comparação visual final pendente. A sessão demonstrativa
+não conclui o núcleo de operação real do marco 3. Dispositivos e transporte
+dos marcos 4 e 5 continuam pendentes.
+
 ## 1. Fixar a referência
 
 - Registrar a versão exata da NI Driver Station 2026 usada como referência.
