@@ -2,6 +2,10 @@
 
 Data: 2026-11-05. Estado: aceita para o primeiro marco.
 
+Evolução posterior: o item Practice inicialmente pendente foi implementado na
+demonstração local conforme a [decisão 0002](0002-practice-local.md). Os critérios
+abaixo registram o escopo da primeira prévia.
+
 ## Objetivo desta entrega
 
 Entregar uma aplicação Linux executável, compacta e navegável, que permita

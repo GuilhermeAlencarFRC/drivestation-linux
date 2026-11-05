@@ -33,7 +33,8 @@ private slots:
     session.setConnected(true);
     QVERIFY(!session.enabled());
     QVERIFY(session.enable());
-    session.advance(1250);
+    session.advance(800);
+    session.advance(450);
     QCOMPARE(session.elapsedMs(), 1250);
     session.setConnected(false);
     session.advance(500);
@@ -46,7 +47,9 @@ private slots:
     session.setMode(ds::DemoSession::Mode::Autonomous);
     QVERIFY(!session.enabled());
     session.setMode(ds::DemoSession::Mode::Practice);
-    QVERIFY(!session.enable());
+    QVERIFY(session.enable());
+    QVERIFY(session.busy());
+    QVERIFY(!session.enabled());
     session.setMode(ds::DemoSession::Mode::Test);
     QVERIFY(session.enable());
     session.advance(-1);

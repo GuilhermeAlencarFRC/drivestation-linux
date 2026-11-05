@@ -7,10 +7,15 @@ Widgets, cinco abas principais, três visualizações à direita, preferências 
 sessão local de demonstração. Os 11 cenários de teste passaram; instalação
 isolada, renderização offscreen e inicialização Wayland foram verificadas.
 
-O marco 1 ainda exige uma referência exata da NI 2026. O marco 2 tem uma primeira
-entrega executável, com comparação visual final pendente. A sessão demonstrativa
-não conclui o núcleo de operação real do marco 3. Dispositivos e transporte
-dos marcos 4 e 5 continuam pendentes.
+A evolução 0.2.0 acrescenta o motor determinístico de Practice, A-Stop,
+cancelamento em todas as fases, tempo restante e aviso de habilitação futura.
+As duas suítes locais somam 67 cenários aprovados, contando as linhas de dados
+parametrizadas. Veja a [validação de Practice](validacao-practice.md).
+
+O marco 1 ainda exige uma referência exata da NI 2026. O marco 2 tem uma entrega
+executável, com comparação visual final pendente. O motor de Practice avança
+o marco 3, mas a demonstração não valida controle de um robô nem suspensão
+física. Dispositivos e transporte dos marcos 4 e 5 continuam pendentes.
 
 ## 1. Fixar a referência
 

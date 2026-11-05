@@ -3,9 +3,10 @@
 Reimplementação independente para Linux da **NI FRC Driver Station**, com foco
 em fidelidade visual e funcional à experiência usada com **roboRIO**.
 
-**Estado atual: primeira prévia desktop executável.** A interface permite navegar
-pelas abas, salvar preferências e explorar uma demonstração local. Comunicação
-com roboRIO e leitura de controles físicos ainda não foram implementadas.
+**Estado atual: prévia desktop com Practice local.** A interface permite navegar
+pelas abas, salvar preferências e executar uma sequência de prática demonstrativa
+com A-Stop. Comunicação com roboRIO e leitura de controles físicos ainda não
+foram implementadas.
 
 ![Prévia offline da aba Operation](docs/images/operation.png)
 
@@ -66,6 +67,35 @@ O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
 - **Reset demo** limpa a sessão e a desconecta. Reconectar, mudar modo, equipe
   ou estação não reabilita a demonstração automaticamente.
 
+## Practice na demonstração
+
+Ative **Simulate robot**, selecione **Practice** e pressione **Enable**. Os tempos
+de Setup controlam os cinco segmentos consecutivos: Countdown → Autonomous →
+Delay → Teleoperated → End Game. O último segmento continua em Teleop. Os padrões
+existentes são preservados; eles não definem as regras de duração de uma temporada.
+
+Countdown e Delay ficam desabilitados. Os outros segmentos habilitam a sessão
+local e a sequência termina desabilitada. **Sequence Time** inclui as esperas;
+**Phase Left** mostra o tempo restante do segmento.
+
+O botão **A-Stop** e `Backspace`, fora dos campos de texto, interrompem somente
+Autonomous. O relógio continua e Teleop retoma automaticamente. O status laranja
+e **WILL ENABLE** indicam habilitação futura.
+
+**Disable** ou `Enter` cancelam tudo, inclusive Countdown e A-Stop. E-Stop,
+desconexão, perda de ativação da janela, fechamento, troca de modo, equipe,
+estação ou tempos também interrompem a execução. Um atraso de atualização maior
+que um segundo cancela a sessão em vez de avançar silenciosamente pelas fases.
+Nada é retomado sem um novo Enable explícito, exceto a retomada prevista de um
+A-Stop ainda em execução.
+
+![Practice aguardando habilitação na demonstração](docs/images/practice-countdown.png)
+
+Veja as capturas de [A-Stop](docs/images/practice-astop.png) e
+[Teleop retomado](docs/images/practice-teleop.png), a
+[decisão de comportamento](docs/decisoes/0002-practice-local.md) e a
+[validação](docs/validacao-practice.md).
+
 O aplicativo inicia desconectado e desabilitado. Estado de conexão, habilitação
 e E-Stop não são persistidos. As preferências usam `QStandardPaths` e ficam,
 normalmente, em `~/.config/DriveStationLinux/drivestation-linux/settings.ini`.
@@ -86,10 +116,11 @@ mínima de 1024 pixels. O layout usa como referência inicial as imagens da
 documentação WPILib, que incluem versões anteriores da NI; a comparação com uma
 versão exata da NI 2026 continua pendente.
 
-Não há captura de teclado fora da aplicação, sequência de Practice, descoberta
-de USB, rumble, integração com dashboards, encaixe automático da janela ou
+Não há captura de teclado fora da aplicação, descoberta de USB, rumble,
+integração com dashboards, encaixe automático da janela ou
 transporte para robôs. Campos sem fonte de dados exibem indisponibilidade.
-O núcleo de operação real e o protocolo terão implementação e testes próprios.
+Sons de Practice, suspensão física e a paridade exata com a NI ainda não foram
+validados. O núcleo de operação real e o protocolo terão testes próprios.
 
 - [Matriz de fidelidade](docs/fidelidade.md)
 - [Plano de desenvolvimento](docs/roadmap.md)

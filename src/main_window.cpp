@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QEvent>
 #include <QFrame>
@@ -65,6 +66,13 @@ QSpinBox* spinBox(int value, int maximum, const QString& name) {
   result->setButtonSymbols(QAbstractSpinBox::NoButtons);
   result->setAlignment(Qt::AlignRight);
   return result;
+}
+
+QString formatTime(qint64 milliseconds) {
+  return QStringLiteral("%1:%2.%3")
+      .arg(milliseconds / 60000)
+      .arg((milliseconds / 1000) % 60, 2, 10, QLatin1Char('0'))
+      .arg((milliseconds / 100) % 10);
 }
 } // namespace
 
@@ -136,6 +144,7 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent)
   applyStationStyle(*this);
   selectTab(0);
   selectRightView(0);
+  session_.setPracticeTimings(preferences_.practiceSeconds);
   connect(&session_, &DemoSession::changed, this, &MainWindow::refresh);
   connect(qApp, &QGuiApplication::applicationStateChanged, this,
           [this](Qt::ApplicationState state) {
@@ -146,6 +155,7 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent)
           });
   qApp->installEventFilter(this);
   auto* timer = new QTimer(this);
+  timer->setObjectName(QStringLiteral("demoTicker"));
   timer->setInterval(100);
   connect(timer, &QTimer::timeout, this, &MainWindow::tick);
   tickClock_.start();
@@ -156,6 +166,12 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent)
 }
 
 MainWindow::~MainWindow() { qApp->removeEventFilter(this); }
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+  pressedKeys_.clear();
+  session_.disable();
+  QWidget::closeEvent(event);
+}
 
 QWidget* MainWindow::createOperation() {
   auto* result = panel();
@@ -187,33 +203,44 @@ QWidget* MainWindow::createOperation() {
   commands->addWidget(enable_);
   commands->addWidget(disable_);
   left->addLayout(commands);
-  stop_ = new QPushButton(QStringLiteral("E-Stop (Space)"));
+  auto* stops = new QHBoxLayout;
+  stops->setSpacing(2);
+  autoStop_ = new QPushButton(QStringLiteral("A-Stop"));
+  autoStop_->setObjectName(QStringLiteral("autonomousStop"));
+  autoStop_->setToolTip(QStringLiteral("Backspace: stop Practice Autonomous; resume at Teleop."));
+  stops->addWidget(autoStop_);
+  stop_ = new QPushButton(QStringLiteral("E-Stop"));
   stop_->setObjectName(QStringLiteral("emergencyStop"));
-  left->addWidget(stop_);
-  connect(enable_, &QPushButton::clicked, this, [this] {
-    if (session_.enable())
-      appendMessage(QStringLiteral("Demo enabled. No commands sent."));
-  });
+  stop_->setToolTip(QStringLiteral("Space: latch emergency stop until Reset demo."));
+  stops->addWidget(stop_);
+  left->addLayout(stops);
+  connect(enable_, &QPushButton::clicked, this, &MainWindow::requestEnable);
   connect(disable_, &QPushButton::clicked, this, [this] { session_.disable(); });
   connect(stop_, &QPushButton::clicked, this, [this] { session_.emergencyStop(); });
+  connect(autoStop_, &QPushButton::clicked, this, [this] { session_.autonomousStop(); });
   layout->addLayout(left, 1);
   auto* line = new QFrame;
   line->setFrameShape(QFrame::VLine);
   layout->addWidget(line);
   auto* right = new QGridLayout;
-  right->setVerticalSpacing(8);
-  right->addWidget(label(QStringLiteral("Elapsed Time")), 0, 0);
+  right->setVerticalSpacing(5);
+  elapsedCaption_ = label(QStringLiteral("Elapsed Time"));
+  right->addWidget(elapsedCaption_, 0, 0);
   elapsed_ = label(QStringLiteral("0:00.0"));
   elapsed_->setObjectName(QStringLiteral("elapsed"));
   elapsed_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   right->addWidget(elapsed_, 0, 1);
-  right->addWidget(label(QStringLiteral("PC Battery")), 1, 0);
-  right->addWidget(label(QStringLiteral("—")), 1, 1);
-  right->addWidget(label(QStringLiteral("PC CPU %")), 2, 0);
+  right->addWidget(label(QStringLiteral("Phase Left")), 1, 0);
+  phaseRemaining_ = label(QStringLiteral("—"));
+  phaseRemaining_->setObjectName(QStringLiteral("phaseRemaining"));
+  right->addWidget(phaseRemaining_, 1, 1);
+  right->addWidget(label(QStringLiteral("PC Battery")), 2, 0);
   right->addWidget(label(QStringLiteral("—")), 2, 1);
-  right->addWidget(label(QStringLiteral("Window")), 3, 0);
-  right->addWidget(label(QStringLiteral("Floating")), 3, 1);
-  right->addWidget(label(QStringLiteral("Team Station")), 4, 0);
+  right->addWidget(label(QStringLiteral("PC CPU %")), 3, 0);
+  right->addWidget(label(QStringLiteral("—")), 3, 1);
+  right->addWidget(label(QStringLiteral("Window")), 4, 0);
+  right->addWidget(label(QStringLiteral("Floating")), 4, 1);
+  right->addWidget(label(QStringLiteral("Team Station")), 5, 0);
   station_ = new QComboBox;
   station_->setObjectName(QStringLiteral("station"));
   station_->addItems({QStringLiteral("Red 1"), QStringLiteral("Red 2"), QStringLiteral("Red 3"),
@@ -225,7 +252,7 @@ QWidget* MainWindow::createOperation() {
     session_.disable();
     savePreferences();
   });
-  right->addWidget(station_, 4, 1);
+  right->addWidget(station_, 5, 1);
   layout->addLayout(right, 2);
   return result;
 }
@@ -298,11 +325,12 @@ QWidget* MainWindow::createSetup() {
     grid->addWidget(input, i, 1);
     connect(input, &QSpinBox::valueChanged, this, [this, i](int value) {
       preferences_.practiceSeconds[i] = value;
+      session_.setPracticeTimings(preferences_.practiceSeconds);
       savePreferences();
     });
   }
   timing->addLayout(grid);
-  auto* note = label(QStringLiteral("Sequence not implemented"));
+  auto* note = label(QStringLiteral("Local sequence only"));
   note->setProperty("muted", true);
   timing->addWidget(note);
   timing->addStretch();
@@ -549,6 +577,15 @@ void MainWindow::appendMessage(const QString& message) {
       QTime::currentTime().toString(QStringLiteral("HH:mm:ss")), message));
 }
 
+void MainWindow::requestEnable() {
+  if (session_.enable()) {
+    tickClock_.restart();
+    appendMessage(session_.mode() == DemoSession::Mode::Practice
+                      ? QStringLiteral("Practice started locally. No commands sent.")
+                      : QStringLiteral("Demo enabled. No commands sent."));
+  }
+}
+
 void MainWindow::refresh() {
   const bool connected = session_.connected();
   const QSignalBlocker blocker(simulate_);
@@ -560,30 +597,46 @@ void MainWindow::refresh() {
   for (auto* lamp : lamps_)
     lamp->setLit(connected);
   status_->setText(session_.status());
-  dataSource_->setText(connected ? QStringLiteral("SIMULATED") : QStringLiteral("OFFLINE"));
+  const bool practice = session_.mode() == DemoSession::Mode::Practice;
+  const bool pending = practice && connected && session_.practice().pendingEnable();
+  dataSource_->setText(!connected           ? QStringLiteral("OFFLINE")
+                       : pending            ? QStringLiteral("SIMULATED · WILL ENABLE")
+                       : session_.enabled() ? QStringLiteral("SIMULATED · ENABLED")
+                                            : QStringLiteral("SIMULATED · DISABLED"));
+  const bool flash = pending && (static_cast<qint64>(session_.simulationSeconds() * 2) % 2 == 0);
   status_->setStyleSheet(session_.emergencyStopped()
                              ? QStringLiteral("color: #ff625a; font-weight: bold;")
-                             : QStringLiteral("font-weight: bold;"));
+                         : flash ? QStringLiteral("background: #a35900; font-weight: bold;")
+                                 : QStringLiteral("font-weight: bold;"));
   modeButtons_[static_cast<int>(session_.mode())]->setChecked(true);
-  enable_->setEnabled(connected && !session_.enabled() && !session_.emergencyStopped() &&
-                      session_.mode() != DemoSession::Mode::Practice);
+  enable_->setEnabled(session_.canEnable());
   enable_->setToolTip(
       session_.mode() == DemoSession::Mode::Practice
-          ? QStringLiteral("Practice sequence is not implemented.")
+          ? QStringLiteral("Start the local Practice sequence using the times in Setup.")
           : QStringLiteral("Enable the local demonstration. Shortcut: hold [ ] \\."));
-  disable_->setEnabled(session_.enabled());
+  disable_->setEnabled(session_.busy());
   stop_->setEnabled(connected && !session_.emergencyStopped());
+  autoStop_->setEnabled(practice && session_.enabled() &&
+                        session_.practice().phase() == PracticeSequence::Phase::Autonomous);
   reset_->setEnabled(connected || session_.emergencyStopped() || session_.elapsedMs() != 0);
-  const qint64 elapsed = session_.elapsedMs();
-  elapsed_->setText(QStringLiteral("%1:%2.%3")
-                        .arg(elapsed / 60000)
-                        .arg((elapsed / 1000) % 60, 2, 10, QLatin1Char('0'))
-                        .arg((elapsed / 100) % 10));
-  footer_->setText(
-      settingsError_
-          ? QStringLiteral("PREFERENCES NOT SAVED · Check file permissions")
-          : QStringLiteral(
-                "OFFLINE PREVIEW · No robot commands · Enter: Disable / Space: E-Stop (in app)"));
+  elapsedCaption_->setText(practice ? QStringLiteral("Sequence Time")
+                                    : QStringLiteral("Elapsed Time"));
+  elapsed_->setText(formatTime(session_.elapsedMs()));
+  phaseRemaining_->setText(practice && session_.practice().active()
+                               ? formatTime(session_.practice().remainingMs())
+                               : QStringLiteral("—"));
+  footer_->setText(settingsError_ ? QStringLiteral("PREFERENCES NOT SAVED · Check file permissions")
+                                  : QStringLiteral("OFFLINE PREVIEW · No robot commands · Enter: "
+                                                   "Disable / Space: E-Stop / Backspace: A-Stop"));
+  if (session_.practice().phase() != lastPracticePhase_) {
+    lastPracticePhase_ = session_.practice().phase();
+    appendMessage(
+        QStringLiteral("Practice: %1 (local).").arg(DemoSession::phaseName(lastPracticePhase_)));
+  }
+  if (session_.practice().autoStopped() && !lastAutoStopped_) {
+    appendMessage(QStringLiteral("A-Stop: Autonomous disabled; Teleop will resume automatically."));
+  }
+  lastAutoStopped_ = session_.practice().autoStopped();
   diagnostics_->setText(QStringLiteral("Communications                     Versions & Info\n\n"
                                        "Robot: %1\nFMS: Not connected\nDS: %2 (offline preview)\n"
                                        "roboRIO image / WPILib: Not received")
@@ -608,7 +661,12 @@ void MainWindow::refresh() {
 }
 
 void MainWindow::tick() {
-  session_.advance(tickClock_.restart());
+  const qint64 elapsed = tickClock_.restart();
+  const bool cancelled = elapsed > DemoSession::MaxTickGapMs && session_.busy();
+  session_.advance(elapsed);
+  if (cancelled)
+    appendMessage(
+        QStringLiteral("Demo cancelled after delayed update; enable explicitly to restart."));
   if (session_.connected() && session_.simulationSeconds() - lastChartSample_ >= 0.2) {
     chart_->appendSample(session_.simulationSeconds(), session_.tripTime(), session_.voltage());
     lastChartSample_ = session_.simulationSeconds();
@@ -634,6 +692,11 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
     pressedKeys_.remove(key->key());
     return QWidget::eventFilter(watched, event);
   }
+  const bool editing = qobject_cast<QLineEdit*>(widget) || qobject_cast<QSpinBox*>(widget);
+  if (key->key() == Qt::Key_Backspace && !editing && session_.autonomousStop()) {
+    pressedKeys_.clear();
+    return true;
+  }
   if (key->key() == Qt::Key_Space && session_.connected()) {
     pressedKeys_.clear();
     session_.emergencyStop();
@@ -646,13 +709,12 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
     if (!qobject_cast<QLineEdit*>(widget) && !qobject_cast<QSpinBox*>(widget))
       return true;
   }
-  const bool editing = qobject_cast<QLineEdit*>(widget) || qobject_cast<QSpinBox*>(widget);
   if (!editing && (key->key() == Qt::Key_BracketLeft || key->key() == Qt::Key_BracketRight ||
                    key->key() == Qt::Key_Backslash)) {
     pressedKeys_.insert(key->key());
     if (pressedKeys_.contains(Qt::Key_BracketLeft) && pressedKeys_.contains(Qt::Key_BracketRight) &&
         pressedKeys_.contains(Qt::Key_Backslash)) {
-      session_.enable();
+      requestEnable();
       pressedKeys_.clear();
     }
     return true;

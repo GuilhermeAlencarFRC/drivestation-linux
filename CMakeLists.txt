@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(DriveStationLinux VERSION 0.1.0 LANGUAGES CXX)
+project(DriveStationLinux VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,6 +11,7 @@ include(CTest)
 include(GNUInstallDirs)
 
 add_library(drivestation_ui STATIC
+  src/practice_sequence.cpp src/practice_sequence.h
   src/demo_session.cpp src/demo_session.h
   src/preferences.cpp src/preferences.h
   src/widgets.cpp src/widgets.h
@@ -32,6 +33,10 @@ if(BUILD_TESTING)
   target_link_libraries(drivestation_tests PRIVATE drivestation_ui Qt6::Test)
   add_test(NAME drivestation COMMAND drivestation_tests)
   set_tests_properties(drivestation PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+  add_executable(practice_tests tests/test_practice.cpp)
+  target_link_libraries(practice_tests PRIVATE drivestation_ui Qt6::Test)
+  add_test(NAME practice COMMAND practice_tests)
+  set_tests_properties(practice PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 install(TARGETS drivestation-linux RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

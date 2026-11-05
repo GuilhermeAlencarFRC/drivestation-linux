@@ -9,6 +9,7 @@
 #include <array>
 
 class QCheckBox;
+class QCloseEvent;
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -37,6 +38,7 @@ public:
 
 protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
+  void closeEvent(QCloseEvent* event) override;
 
 private:
   QWidget* createOperation();
@@ -51,6 +53,7 @@ private:
   void refresh();
   void savePreferences();
   void appendMessage(const QString& message);
+  void requestEnable();
   void tick();
 
   PreferenceStore store_;
@@ -59,6 +62,8 @@ private:
   QElapsedTimer tickClock_;
   double lastChartSample_ = -1;
   bool settingsError_ = false;
+  PracticeSequence::Phase lastPracticePhase_ = PracticeSequence::Phase::Idle;
+  bool lastAutoStopped_ = false;
   QSet<int> pressedKeys_;
   QStackedWidget* pages_ = nullptr;
   std::array<QToolButton*, 5> tabButtons_{};
@@ -67,8 +72,11 @@ private:
   QPushButton* enable_ = nullptr;
   QPushButton* disable_ = nullptr;
   QPushButton* stop_ = nullptr;
+  QPushButton* autoStop_ = nullptr;
   QPushButton* reset_ = nullptr;
   QLabel* elapsed_ = nullptr;
+  QLabel* elapsedCaption_ = nullptr;
+  QLabel* phaseRemaining_ = nullptr;
   QLabel* team_ = nullptr;
   QLabel* voltage_ = nullptr;
   QLabel* status_ = nullptr;

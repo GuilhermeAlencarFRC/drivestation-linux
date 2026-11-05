@@ -1,5 +1,7 @@
 #pragma once
 
+#include "practice_sequence.h"
+
 #include <QString>
 #include <array>
 
@@ -10,7 +12,7 @@ struct Preferences {
   int dashboard = 0;
   int station = 0;
   QString gameData;
-  std::array<int, 5> practiceSeconds{5, 15, 1, 105, 30};
+  PracticeSequence::Timings practiceSeconds = PracticeSequence::DefaultSeconds;
 };
 
 class PreferenceStore {

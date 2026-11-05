@@ -11,18 +11,19 @@ funcionamento do recurso correspondente com um robô real.
 | Área | Estado atual | Evidência e pendências |
 | --- | --- | --- |
 | Estrutura visual | Painel compacto navegável | Capturas renderizadas; comparação exata com NI 2026 pendente |
-| Operação | Seleção dos quatro modos; demonstração em Teleoperated, Autonomous e Test | Transições locais testadas; sequência Practice pendente |
-| Habilitação | Enable/Disable e E-Stop locais | Bloqueios, reconexão, mudança de modo e reset testados; sem transporte |
-| Teclado | Atalhos dentro da aplicação | Enter, Space e combinação de habilitação testados; captura global pendente |
+| Operação | Quatro modos; sequência Practice demonstrativa com cinco segmentos | Fronteiras, durações zero, conclusão e A-Stop testados; sem protocolo ou sons |
+| Habilitação | Enable/Disable, A-Stop e E-Stop locais | Cancelamento em cada fase e retomada prevista de A-Stop testados; sem transporte |
+| Teclado | Atalhos dentro da aplicação | Enter, Space, Backspace e combinação de habilitação testados; captura global pendente |
 | Status | Equipe persistida; bateria e indicadores demonstrativos | Origem simulada identificada; sem recepção de dados reais |
 | Controles | Seis slots visíveis e entradas geradas na demonstração | Descoberta, ordenação, POV, rumble e hardware pendentes |
-| Configuração | Preferências persistidas | Reinício, valores inválidos e falha de gravação testados; execução de dashboard e prática pendentes |
+| Configuração | Preferências persistidas e tempos aplicados ao Practice local | Alterar tempos cancela a execução; execução de dashboard pendente |
 | Diagnóstico | Tela inicial com indisponibilidade explícita | Serviços, versões e ações no robô pendentes |
 | Console e gráficos | Mensagens locais e curvas simuladas | Histórico e escala disponíveis; logs e telemetria reais pendentes |
 | Desktop Linux | Janela flutuante e instalação CMake | Renderização offscreen 1x/2x e inicialização Wayland verificadas; demais ambientes e docking pendentes |
 
 Veja [procedimentos e limites da validação](validacao-previa.md). Nenhum item
 desta tabela representa validação de compatibilidade física com roboRIO.
+O [registro de Practice](validacao-practice.md) descreve os testes adicionais.
 
 ## Como registrar a aprovação
 
