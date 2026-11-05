@@ -1,0 +1,62 @@
+name: Build and tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Qt 6 / ${{ matrix.build_type }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Install Qt and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake ninja-build g++ qt6-base-dev
+      - name: Check whitespace
+        run: git diff --check HEAD^ HEAD
+        if: github.event_name == 'push'
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --output-junit test-results.xml
+      - name: Render preview
+        run: ./build/drivestation-linux --config /tmp/drivestation-ci.ini --screenshot preview.png
+      - name: Verify installation
+        run: |
+          cmake --install build --prefix "$RUNNER_TEMP/drivestation-install"
+          "$RUNNER_TEMP/drivestation-install/bin/drivestation-linux" --version
+      - name: Upload test results and preview
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: checks-${{ matrix.build_type }}
+          path: |
+            build/test-results.xml
+            build/Testing/Temporary/LastTest.log
+            preview.png
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,53 @@
+name: Linux package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build tested Linux archive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Qt and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake ninja-build g++ qt6-base-dev
+      - name: Build and test
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 2
+          ctest --test-dir build --output-on-failure
+      - name: Assemble archive
+        run: |
+          package_root="$RUNNER_TEMP/drivestation-package"
+          DESTDIR="$package_root" cmake --install build --prefix /usr
+          cp README.md "$package_root/README.md"
+          printf '%s\n' \
+            'DriveStation Linux: Ubuntu 24.04 / x86_64 build.' \
+            'Requires the system Qt 6 Widgets libraries and platform plugins.' \
+            'This archive is not an AppImage and does not bundle Qt.' \
+            'After extraction, run ./usr/bin/drivestation-linux.' \
+            'Preview only: no roboRIO communication is implemented.' \
+            > "$package_root/PACKAGE.txt"
+          ./build/drivestation-linux --version >> "$package_root/PACKAGE.txt"
+          tar -czf drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz -C "$package_root" .
+          sha256sum drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz > drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz.sha256
+      - name: Upload package and checksum
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drivestation-linux-ubuntu24.04-x86_64-qt6
+          path: |
+            drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz
+            drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30

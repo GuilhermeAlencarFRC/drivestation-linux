@@ -127,6 +127,7 @@ validados. O núcleo de operação real e o protocolo terão testes próprios.
 - [Referências técnicas](docs/referencias.md)
 - [Decisão de stack e critérios da prévia](docs/decisoes/0001-desktop-qt.md)
 - [Validação da primeira prévia](docs/validacao-previa.md)
+- [Workflows de CI, análise e pacote Linux](docs/workflows.md)
 
 ## Identidade e escopo
 
