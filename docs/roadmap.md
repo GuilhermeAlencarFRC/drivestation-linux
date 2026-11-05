@@ -16,7 +16,11 @@ A prévia 0.3.0 aproxima o painel da organização da NI: 1024 × 200, modos
 retangulares, ícones cinza/ciano, console com engrenagem e controles locais
 no menu. Veja a [decisão visual](decisoes/0003-fidelidade-visual.md).
 
-O marco 1 ainda exige uma referência exata da NI 2026. O marco 2 tem uma entrega
+A versão-alvo foi confirmada como NI 26.0; a prévia 0.3.1 restringe o acento de
+cor aos elementos observados nas capturas dessa versão. A
+[pesquisa visual](decisoes/0004-paleta-ni26.md) documenta essa correção.
+
+O marco 1 ainda exige capturas de todas as abas da NI 26.0. O marco 2 tem uma entrega
 executável, com comparação visual final pendente. O motor de Practice avança
 o marco 3, mas a demonstração não valida controle de um robô nem suspensão
 física. Dispositivos e transporte dos marcos 4 e 5 continuam pendentes.

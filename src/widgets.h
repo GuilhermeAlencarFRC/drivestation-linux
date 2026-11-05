@@ -8,7 +8,7 @@
 namespace ds {
 
 enum class Symbol { Operation, Diagnostics, Setup, Usb, Power, Messages, Charts, Both };
-QIcon symbolIcon(Symbol symbol, const QColor& color = QColor("#00c9e8"));
+QIcon symbolIcon(Symbol symbol, const QColor& color = QColor("#999999"));
 
 class Lamp : public QWidget {
 public:

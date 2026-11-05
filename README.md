@@ -8,7 +8,7 @@ pelas abas, salvar preferências e executar uma sequência de prática demonstra
 com A-Stop. Comunicação com roboRIO e leitura de controles físicos ainda não
 foram implementadas.
 
-![Prévia da aba Operation no formato da NI](docs/images/ni-operation.png)
+![Prévia da aba Operation no formato da NI](docs/images/ni26-operation.png)
 
 ## Objetivo
 
@@ -24,8 +24,9 @@ roboRIO. Cada recurso terá seu estado registrado na
 ## Referência do projeto
 
 A referência inicial é a **NI FRC Driver Station da temporada 2026 para
-roboRIO**. A versão exata do aplicativo usada nas comparações ainda será
-registrada. Não há código-fonte da NI incorporado neste repositório.
+roboRIO**, versão **26.0**, confirmada pelo dono. Capturas dessa versão passaram
+a orientar a paleta; veja a [pesquisa visual](docs/decisoes/0004-paleta-ni26.md).
+Não há código-fonte da NI incorporado neste repositório.
 
 A [FIRST Driver Station anunciada para 2027][nova-ds] já oferece suporte a Linux,
 mas foi projetada para Systemcore e não é compatível com roboRIO. Este projeto
@@ -90,10 +91,10 @@ que um segundo cancela a sessão em vez de avançar silenciosamente pelas fases.
 Nada é retomado sem um novo Enable explícito, exceto a retomada prevista de um
 A-Stop ainda em execução.
 
-![Practice aguardando habilitação na demonstração](docs/images/ni-practice-countdown.png)
+![Practice aguardando habilitação na demonstração](docs/images/ni26-practice-countdown.png)
 
-Veja as capturas de [A-Stop](docs/images/ni-practice-astop.png) e
-[Teleop retomado](docs/images/ni-practice-teleop.png), a
+Veja as capturas de [A-Stop](docs/images/ni26-practice-astop.png) e
+[Teleop retomado](docs/images/ni26-practice-teleop.png), a
 [decisão de comportamento](docs/decisoes/0002-practice-local.md) e a
 [validação](docs/validacao-practice.md).
 
@@ -108,15 +109,15 @@ QT_QPA_PLATFORM=offscreen ./build/drivestation-linux --screenshot /tmp/drivestat
 ```
 
 `--screenshot` requer um caminho novo e preserva arquivos existentes.
-Veja também [Setup](docs/images/ni-setup.png), [USB](docs/images/ni-usb.png) e
-o [menu de controles locais](docs/images/ni-menu.png).
+Veja também [Setup](docs/images/ni26-setup.png), [USB](docs/images/ni26-usb.png) e
+o [menu de controles locais](docs/images/ni26-menu.png).
 
 ## Desenvolvimento e limitações
 
 O painel tem 200 pixels lógicos de altura e largura
 mínima de 1024 pixels. O layout usa como referência inicial as imagens da
-documentação WPILib, que incluem versões anteriores da NI; a comparação com uma
-versão exata da NI 2026 continua pendente.
+documentação WPILib e capturas da NI 26.0. A comparação completa de todas as
+abas com essa versão continua pendente.
 
 Não há captura de teclado fora da aplicação, descoberta de USB, rumble,
 integração com dashboards, encaixe automático da janela ou
@@ -129,6 +130,8 @@ validados. O núcleo de operação real e o protocolo terão testes próprios.
 - [Referências técnicas](docs/referencias.md)
 - [Decisão de stack e critérios da prévia](docs/decisoes/0001-desktop-qt.md)
 - [Ajustes de fidelidade visual](docs/decisoes/0003-fidelidade-visual.md)
+- [Pesquisa e correção da paleta NI 26.0](docs/decisoes/0004-paleta-ni26.md)
+- [Validação da correção 0.3.1](docs/validacao-ni26.md)
 - [Validação da interface 0.3.0](docs/validacao-visual.md)
 - [Validação da primeira prévia](docs/validacao-previa.md)
 - [Workflows de CI, análise e pacote Linux](docs/workflows.md)

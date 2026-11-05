@@ -5,6 +5,10 @@ mudar; cada implementação deve registrar a versão pertinente à sua referênc
 
 ## NI Driver Station para roboRIO
 
+Versão visual confirmada pelo dono: **26.0**. A
+[decisão de paleta](decisoes/0004-paleta-ni26.md) registra três capturas com a
+versão visível, a origem de cada uma e as diferenças encontradas no port.
+
 - [FRC Driver Station Powered by NI LabVIEW](https://docs.wpilib.org/en/stable/docs/software/driverstation/driver-station.html)
   — referência de interface e comportamento.
 - [WPILib instalada localmente, versão 2026.2.1](https://github.com/wpilibsuite/allwpilib/releases/tag/v2026.2.1)
@@ -21,7 +25,7 @@ mudar; cada implementação deve registrar a versão pertinente à sua referênc
 
 ## Uso das fontes
 
-Os documentos acima orientam o levantamento de requisitos. Eles não demonstram
+Os documentos e capturas acima orientam o levantamento de requisitos. Eles não demonstram
 que este projeto tenha implementado ou testado qualquer funcionalidade.
 
 Capturas, nomes e recursos de terceiros devem ter origem e permissão de uso

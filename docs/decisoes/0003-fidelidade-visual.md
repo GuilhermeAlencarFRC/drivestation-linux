@@ -2,6 +2,9 @@
 
 Data: 2026-11-05. Estado: implementada na prévia 0.3.0.
 
+Revisão posterior: o dono rejeitou os acentos extras. A versão 26.0 e a
+correção de paleta foram fixadas na [decisão 0004](0004-paleta-ni26.md).
+
 O dono pediu que a interface acompanhasse mais de perto a Driver Station
 original. A referência disponível continua sendo o conjunto de imagens da
 documentação WPILib; a captura de Operation identifica a NI 24.0b96. Não foi

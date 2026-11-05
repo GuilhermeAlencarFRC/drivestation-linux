@@ -206,7 +206,9 @@ QWidget* MainWindow::createOperation() {
   auto* group = new QButtonGroup(this);
   for (int i = 0; i < 4; ++i) {
     auto mode = static_cast<DemoSession::Mode>(i);
-    modeButtons_[i] = new QPushButton(DemoSession::modeName(mode));
+    modeButtons_[i] =
+        new QPushButton(mode == DemoSession::Mode::Teleoperated ? QStringLiteral("TeleOperated")
+                                                                : DemoSession::modeName(mode));
     modeButtons_[i]->setObjectName(QStringLiteral("mode%1").arg(i));
     modeButtons_[i]->setProperty("modeSelector", true);
     modeButtons_[i]->setCheckable(true);
@@ -229,8 +231,12 @@ QWidget* MainWindow::createOperation() {
   commands->setSpacing(0);
   enable_ = new QPushButton(QStringLiteral("Enable"));
   enable_->setObjectName(QStringLiteral("enable"));
+  enable_->setCheckable(true);
+  enable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   disable_ = new QPushButton(QStringLiteral("Disable"));
   disable_->setObjectName(QStringLiteral("disable"));
+  disable_->setCheckable(true);
+  disable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   commands->addWidget(enable_);
   commands->addWidget(disable_);
   columnLayout->addWidget(commandPanel);
@@ -743,6 +749,8 @@ void MainWindow::refresh() {
                                  : QStringLiteral("font-weight: bold;"));
   modeButtons_[static_cast<int>(session_.mode())]->setChecked(true);
   enable_->setEnabled(session_.canEnable());
+  enable_->setChecked(session_.enabled());
+  disable_->setChecked(!session_.enabled());
   enable_->setToolTip(
       session_.mode() == DemoSession::Mode::Practice
           ? QStringLiteral("Start the local Practice sequence using the times in Setup.")
@@ -863,33 +871,34 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
 void applyStationStyle(QWidget& widget) {
   widget.setStyleSheet(QStringLiteral(R"(
     QWidget { color: #ededed; font-family: "Arial", "Liberation Sans", "Sans Serif"; font-size: 13px; }
-    QWidget#stationWindow { background: #303030; }
+    QWidget#stationWindow { background: #262626; }
     QFrame#panel, QWidget#messagePanel, QWidget#chartPanel {
       background: #444444; border: 1px solid #242424; border-radius: 4px;
     }
     QLabel, QCheckBox { background: transparent; border: none; }
     QLabel[muted="true"] { color: #b8b8b8; font-size: 10px; }
     QLabel#robotStatus { font-size: 16px; }
-    QLabel#dataSource { color: #00c9e8; font-size: 9px; font-weight: bold; }
+    QLabel#dataSource { color: #b8b8b8; font-size: 9px; font-weight: bold; }
     QLabel#footer { color: #bbb; font-size: 9px; }
     QLabel#elapsed, QLabel#voltage, QLabel#teamStatus { font-size: 18px; }
     QToolButton[navigation="true"] {
-      background: #383838; border: 1px solid #292929; border-radius: 0; padding: 1px;
+      background: #333333; border: 1px solid #292929; border-radius: 0; padding: 1px;
     }
     QToolButton[navigation="true"]:checked { border-right: 3px solid #00c9e8; background: #474747; }
     QToolButton[navigation="true"][rightSide="true"]:checked { border-right: 1px solid #292929; border-left: 3px solid #00c9e8; }
-    QToolButton#closeStation { color: #bd7169; font-size: 29px; background: #3a3a3a; border: none; }
+    QToolButton#closeStation { color: #bdbdbd; font-size: 29px; background: #541414; border: none; }
     QToolButton#consoleSettings, QToolButton#audioControl { background: transparent; border: none; }
     QToolButton[windowControl="true"], QToolButton[windowControl="true"]:disabled {
       background: #333; color: #888; border: 1px solid #2d2d2d; font-size: 20px;
     }
     QToolButton:hover, QPushButton:hover { background: #555; }
-    QToolButton:focus, QPushButton:focus { border: 1px solid #00c9e8; }
+    QToolButton:focus, QPushButton:focus { border: 1px solid #888; }
     QPushButton { background: #393939; border: 1px solid #282828; padding: 3px 5px; }
-    QPushButton:pressed, QPushButton:checked { background: #252525; border: 1px solid #00c9e8; }
+    QPushButton:pressed, QPushButton:checked { background: #252525; border: 1px solid #888; }
     QPushButton:disabled { color: #858585; }
     QFrame#commandPanel { background: #303030; border: 1px solid #292929; }
-    QPushButton#enable, QPushButton#disable { border: none; padding: 0; background: transparent; font-weight: bold; font-size: 17px; }
+    QPushButton#enable, QPushButton#disable { border: 1px solid #292929; padding: 0; background: #444; font-weight: bold; font-size: 17px; }
+    QPushButton#enable:checked, QPushButton#disable:checked { background: #2b2b2b; }
     QPushButton#enable { color: #25bd00; }
     QPushButton#enable:disabled { color: #074700; }
     QPushButton#disable, QPushButton#disable:disabled { color: #ff1710; }
@@ -898,9 +907,10 @@ void applyStationStyle(QWidget& widget) {
     QPushButton[modeSelector="true"]:focus { border: 1px solid #888; }
     QPushButton#emergencyStop { color: #ff625a; }
     QLineEdit, QComboBox { color: #111; background: #ccc; border: 1px solid #333; padding: 2px 4px; min-height: 16px; }
+    QLineEdit, QPlainTextEdit, QListWidget { selection-background-color: #666; selection-color: #fff; }
     QSpinBox { color: #111; background: #ccc; min-height: 20px; }
     QSpinBox QLineEdit { border: none; padding: 0; min-height: 0; background: transparent; }
-    QComboBox QAbstractItemView { color: #eee; background: #444; selection-background-color: #176878; }
+    QComboBox QAbstractItemView { color: #eee; background: #444; selection-background-color: #666; }
     QComboBox#station { color: #eee; background: #444; padding: 1px 5px; }
     QComboBox#dashboard { color: #eee; background: #303030; }
     QListWidget { background: #484848; border: 1px solid #666; font-size: 13px; }
@@ -911,7 +921,7 @@ void applyStationStyle(QWidget& widget) {
     QProgressBar[hostMetric="true"] { background: #333; border: 1px solid #222; }
     QCheckBox { spacing: 4px; font-size: 10px; }
     QCheckBox::indicator { width: 11px; height: 11px; background: #555; border: 1px solid #999; }
-    QCheckBox::indicator:checked { background: #00a9c5; border: 1px solid #00d5f5; }
+    QCheckBox::indicator:checked { background: #bbb; border: 1px solid #ddd; }
     QToolTip { color: #eee; background: #242424; border: 1px solid #666; }
     QMenu { background: #444; color: #eee; border: 1px solid #777; }
   )"));
