@@ -16,10 +16,11 @@ o CI e a análise anteriores ainda em andamento.
 Para gerar um pacote, abra **Actions → Linux package → Run workflow** e escolha
 a branch. O workflow testa antes de empacotar. Nenhuma release é publicada
 automaticamente. O arquivo tem alvo Ubuntu 24.04 x86_64 e depende das bibliotecas
-e plugins Qt 6 e SDL2 >= 2.24 instalados no sistema; ele não é um AppImage.
+e plugins Qt 6 (Widgets e Network) e SDL2 >= 2.24 instalados no sistema; ele não é um AppImage.
 
-Os testes de CI cobrem a demonstração local, erros de entrada e dispositivos
-virtuais SDL sem acesso administrativo. Uma execução aprovada
+Os testes de CI cobrem a demonstração local, erros de entrada, dispositivos
+virtuais SDL e protocolo/UDP em loopback sem acesso administrativo. O pacote
+inclui `drivestation-network-check` além da interface gráfica. Uma execução aprovada
 não comprova compatibilidade física com roboRIO ou autorização de uso em FMS.
 
 Primeiras execuções verificadas no commit `cff5691`:

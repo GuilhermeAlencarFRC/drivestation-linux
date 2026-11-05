@@ -5,7 +5,8 @@ inicial na temporada 2026 e no roboRIO. Versão-alvo confirmada: 26.0.
 A comparação completa de todas as abas permanece pendente.
 
 Primeira prévia desktop implementada em C++/Qt 6. A validação descrita abaixo
-cobre a demonstração local e entrada por dispositivos virtuais SDL. Uma tela desenhada não comprova o
+cobre a demonstração local, entrada por dispositivos virtuais SDL e
+comunicação UDP com um par local de teste. Uma tela desenhada não comprova o
 funcionamento do recurso correspondente com um robô real.
 
 | Área | Estado atual | Evidência e pendências |
@@ -19,6 +20,7 @@ funcionamento do recurso correspondente com um robô real.
 | Configuração | Preferências persistidas e tempos aplicados ao Practice local | Alterar tempos cancela a execução; execução de dashboard pendente |
 | Diagnóstico | Tela inicial com indisponibilidade explícita | Serviços, versões e ações no robô pendentes |
 | Console e gráficos | Mensagens locais e curvas simuladas | Histórico e escala disponíveis; logs e telemetria reais pendentes |
+| Rede | Codec UDP experimental, watchdog e transporte com destino explícito; verificador em loopback | Sem TCP, descoberta ou ligação à UI; formato e sequência precisam ser conferidos com NI 26.0/roboRIO |
 | Desktop Linux | Janela flutuante e instalação CMake | Renderização offscreen 1x/2x e inicialização Wayland verificadas; demais ambientes e docking pendentes |
 
 Veja [procedimentos e limites da validação](validacao-previa.md). Nenhum item

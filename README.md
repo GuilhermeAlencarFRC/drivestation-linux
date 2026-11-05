@@ -6,7 +6,8 @@ em fidelidade visual e funcional à experiência usada com **roboRIO**.
 **Estado atual: prévia desktop com Practice local e entrada Linux por SDL2.**
 Controles são detectados em seis slots, com eixos, botões, POV e teste de rumble.
 A integração foi exercitada com dispositivos virtuais SDL; modelos físicos ainda
-precisam de validação. Comunicação com roboRIO continua pendente.
+precisam de validação. A base UDP experimental pode ser exercitada em loopback;
+a integração da interface com roboRIO continua pendente.
 
 ![Prévia da aba Operation no formato da NI](docs/images/ni26-operation.png)
 
@@ -35,7 +36,8 @@ tem como alvo a experiência anterior da NI e o ecossistema roboRIO.
 ## Compilar e executar
 
 Dependências: compilador C++17, CMake 3.21 ou posterior, Ninja e os módulos
-Widgets e Test do Qt 6.4 ou posterior, além de SDL2 2.24 ou posterior. Não há downloads automáticos no build.
+Widgets, Network e Test do Qt 6.4 ou posterior, além de SDL2 2.24 ou posterior.
+Não há downloads automáticos no build.
 O ambiente local validado é Arch Linux x86_64 com Qt 6.12.0 e GCC 16.2.1.
 O CI também passou no Ubuntu 24.04 com Qt 6.4.2; a versão 6.4.0 exata não foi testada.
 
@@ -106,6 +108,37 @@ A demo não cria dispositivos, eixos ou botões fictícios. Nenhuma permissão d
 Veja a [decisão de entrada](docs/decisoes/0005-entrada-sdl.md) e os
 [resultados e limites dos testes](docs/validacao-usb.md).
 
+## Verificar a comunicação UDP local
+
+A versão 0.5.0 inclui uma biblioteca de comunicação separada e um verificador
+sem janela gráfica:
+
+```sh
+./build/drivestation-network-check
+./build/drivestation-network-check --json
+```
+
+O comando cria dois sockets em **127.0.0.1**, em portas efêmeras, e encerra com
+código zero quando passa. Ele verifica entradas de controles, habilitação explícita,
+resposta de estado/bateria, timeout, reconexão desabilitada e E-Stop travado.
+Não aceita destino externo e não precisa de um roboRIO ou acesso administrativo.
+
+O perfil experimental usa o formato UDP versão 1 documentado para roboRIO:
+sequência, modos, estação, eixos, botões, POV, bateria e saídas de joystick.
+As respostas precisam corresponder a envios recentes, vir da origem configurada
+e avançar a sequência. Pacotes inválidos ou repetidos não renovam a conexão.
+
+O watchdog local é de 250 ms; atraso de envio de 100 ms também cancela a
+habilitação. Esses são limites da implementação, sem garantia de tempo real do
+sistema operacional ou declaração sobre os limites do firmware NI.
+
+**A interface gráfica continua usando DemoSession.** Esta etapa não liga seus
+botões à rede, não envia entradas USB a um robô e não aplica rumble recebido.
+TCP, descoberta, data/hora e descritores ainda faltam. O perfil foi testado com
+um par próprio, não com capturas NI 26.0 ou firmware roboRIO 2026.
+Veja a [decisão técnica](docs/decisoes/0006-transporte-udp.md) e a
+[validação de rede](docs/validacao-rede.md).
+
 ## Practice na demonstração
 
 Abra a engrenagem (ou `F10`), ative **Simulate robot**, selecione **Practice** e pressione **Enable**. Os tempos
@@ -158,9 +191,10 @@ abas com essa versão continua pendente.
 
 Não há captura de teclado fora da aplicação, ordenação persistente de controles,
 integração com dashboards, encaixe automático da janela ou
-transporte para robôs. Campos sem fonte de dados exibem indisponibilidade.
+transporte conectado à interface gráfica. Campos sem fonte de dados exibem indisponibilidade.
 Sons de Practice, suspensão física e a paridade exata com a NI ainda não foram
-validados. O núcleo de operação real e o protocolo terão testes próprios.
+validados. O protocolo UDP experimental tem testes próprios; compatibilidade física e
+paridade completa com a NI permanecem sem validação.
 
 - [Matriz de fidelidade](docs/fidelidade.md)
 - [Plano de desenvolvimento](docs/roadmap.md)

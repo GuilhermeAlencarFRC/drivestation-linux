@@ -34,10 +34,11 @@ jobs:
           cp README.md "$package_root/README.md"
           printf '%s\n' \
             'DriveStation Linux: Ubuntu 24.04 / x86_64 build.' \
-            'Requires system Qt 6 Widgets libraries, platform plugins, and SDL2 >= 2.24.' \
+            'Requires system Qt 6 Widgets/Network libraries, platform plugins, and SDL2 >= 2.24.' \
             'This archive is not an AppImage and does not bundle Qt.' \
             'After extraction, run ./usr/bin/drivestation-linux.' \
-            'Preview only: no roboRIO communication is implemented.' \
+            'Headless UDP loopback check: ./usr/bin/drivestation-network-check --json.' \
+            'GUI preview only. Experimental UDP is checked with a local test peer.' \
             > "$package_root/PACKAGE.txt"
           ./build/drivestation-linux --version >> "$package_root/PACKAGE.txt"
           tar -czf drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz -C "$package_root" .

@@ -26,7 +26,10 @@ o marco 3, mas a demonstração não valida controle de um robô nem suspensão
 física. A prévia 0.4.0 implementa entrada por SDL2 com descoberta, seis slots
 estáveis, eixos, botões, POV e rumble. O marco 4 tem testes com dispositivos
 virtuais, mas ainda requer validação em modelos físicos, ordem persistente e
-mapeamento equivalente ao da NI. O transporte do marco 5 continua pendente.
+mapeamento equivalente ao da NI. A versão 0.5.0 acrescenta codec UDP, política de conexão e transporte Qt Network,
+com verificador executável em loopback. Perda, corrupção, origem, duplicação e
+sequência são testadas. O marco 5 ainda exige TCP, descoberta, data/hora,
+integração da UI e validação com NI 26.0/roboRIO; o teste local não o conclui.
 Veja a [validação de USB](validacao-usb.md).
 
 ## 1. Fixar a referência
