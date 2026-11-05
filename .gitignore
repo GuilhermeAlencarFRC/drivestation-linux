@@ -1,0 +1,24 @@
+# Configuração e segredos locais
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Artefatos e evidências locais
+build/
+dist/
+target/
+coverage/
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.log
+local-evidence/
+
+# Editores e sistema operacional
+.idea/
+.vscode/
+.DS_Store
+*~
