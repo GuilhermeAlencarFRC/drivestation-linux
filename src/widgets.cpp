@@ -224,22 +224,51 @@ void RumbleBar::paintEvent(QPaintEvent*) {
 }
 
 TelemetryChart::TelemetryChart(QWidget* parent) : QWidget(parent) {
+  setObjectName(QStringLiteral("telemetryChart"));
   setMinimumSize(145, 115);
-  setAccessibleName(QStringLiteral("Simulated trip time and battery history"));
+  setSource(Source::Simulation);
 }
 
-void TelemetryChart::appendSample(double seconds, double trip, double voltage) {
-  samples_.append({seconds, trip, voltage});
+void TelemetryChart::setSource(Source source) {
+  source_ = source;
+  setAccessibleName(source == Source::Network
+                        ? QStringLiteral("Received UDP round trip time and battery history")
+                        : QStringLiteral("Simulated trip time and battery history"));
+  clear();
+}
+
+void TelemetryChart::appendSample(double seconds, double trip, double voltage, bool startsSegment) {
+  if (!std::isfinite(seconds) || !std::isfinite(trip) || !std::isfinite(voltage) ||
+      seconds < 0 || trip < 0 || voltage < 0 ||
+      (!samples_.isEmpty() && seconds < samples_.last().seconds))
+    return;
+  samples_.append({seconds, trip, voltage, startsSegment});
   if (samples_.size() > 3000)
     samples_.remove(0, 1);
+  endSeconds_ = std::max(endSeconds_, seconds);
+  setToolTip(QStringLiteral("%1: %2 ms · Battery: %3 V")
+                 .arg(source_ == Source::Network ? QStringLiteral("Received RTT")
+                                                 : QStringLiteral("Simulated trip"))
+                 .arg(trip, 0, 'f', 1).arg(voltage, 0, 'f', 2));
+  update();
+}
+
+void TelemetryChart::advanceTime(double seconds) {
+  if (std::isfinite(seconds) && seconds > endSeconds_)
+    endSeconds_ = seconds;
   update();
 }
 
 void TelemetryChart::clear() {
   samples_.clear();
+  endSeconds_ = 0;
+  setToolTip(source_ == Source::Network ? QStringLiteral("No received UDP samples.")
+                                       : QStringLiteral("No simulated samples."));
   update();
 }
 void TelemetryChart::setWindowSeconds(int seconds) {
+  if (seconds != 12 && seconds != 60 && seconds != 300)
+    return;
   windowSeconds_ = seconds;
   update();
 }
@@ -264,12 +293,22 @@ void TelemetryChart::paintEvent(QPaintEvent*) {
   p.drawText(5, static_cast<int>(bottom.top()) + 10, QStringLiteral("V"));
   p.setPen(QColor("#b9b9b9"));
   p.drawText(QRectF(0, height() - 15, width(), 15), Qt::AlignCenter,
-             QStringLiteral("%1 s · simulated").arg(windowSeconds_));
+             QStringLiteral("%1 s · %2").arg(windowSeconds_)
+                 .arg(source_ == Source::Network ? QStringLiteral("received UDP")
+                                                 : QStringLiteral("simulated")));
   if (samples_.isEmpty()) {
-    p.drawText(top.united(bottom), Qt::AlignCenter, QStringLiteral("No demo data"));
+    p.drawText(top.united(bottom), Qt::AlignCenter,
+               source_ == Source::Network ? QStringLiteral("No received data")
+                                          : QStringLiteral("No demo data"));
     return;
   }
-  const double end = samples_.last().seconds;
+  const double end = endSeconds_;
+  double tripScale = 20;
+  for (const auto& sample : samples_)
+    if (end - sample.seconds <= windowSeconds_)
+      tripScale = std::max(tripScale, std::ceil(sample.trip / 20.0) * 20.0);
+  p.setPen(QColor("#64e649"));
+  p.drawText(0, 26, QString::number(tripScale, 'f', 0));
   const auto plot = [&](const QRectF& rect, bool battery) {
     QPainterPath path;
     bool first = true;
@@ -277,10 +316,10 @@ void TelemetryChart::paintEvent(QPaintEvent*) {
       const double age = end - sample.seconds;
       if (age > windowSeconds_)
         continue;
-      const double value = battery ? sample.voltage / 16.0 : sample.trip / 20.0;
+      const double value = battery ? sample.voltage / 16.0 : sample.trip / tripScale;
       const QPointF point(rect.right() - age / windowSeconds_ * rect.width(),
                           rect.bottom() - std::clamp(value, 0.0, 1.0) * rect.height());
-      if (first) {
+      if (first || sample.startsSegment) {
         path.moveTo(point);
         first = false;
       } else {

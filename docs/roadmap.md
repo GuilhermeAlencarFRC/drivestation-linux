@@ -2,6 +2,12 @@
 
 ## Situação em 2026-11-10
 
+A 0.10.0-alpha.1 acrescenta gráficos de RTT e bateria das respostas UDP aceitas,
+amostragem a cada 200 ms, histórico limitado e interrupções visíveis após perda
+de comunicação. A exportação manual JSON guarda amostras, mensagens TCP e
+diagnóstico da sessão de rede; desabilita a operação antes do diálogo e da escrita.
+O formato é próprio e não representa paridade com os logs binários da NI.
+
 A 0.9.0-alpha.2 consolida a alfa anterior e corrige a comparação de nomes mDNS:
 os comprimentos dos rótulos são preservados, sem confundir pontos literais com
 separadores. Há regressão para pergunta e proprietário de registro com limites

@@ -1,12 +1,17 @@
 #include "discovery_test_peer.h"
 #include "main_window.h"
 #include "tcp_test_peer.h"
+#include "widgets.h"
 
 #include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
+#include <QFileDialog>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -43,6 +48,7 @@ public:
   bool replying = true;
   bool acknowledgeEnable = true;
   bool code = true;
+  quint16 batteryRaw = 0x0c80;
   Peer() {
     socket.bind(QHostAddress::LocalHost, 0, QUdpSocket::DontShareAddress);
     connect(&socket, &QUdpSocket::readyRead, this, [this] {
@@ -61,7 +67,7 @@ public:
         status.enabled = control->enabled && acknowledgeEnable;
         status.emergencyStopped = control->emergencyStopped;
         status.trace = code ? 0x30 : 0x10;
-        status.batteryRaw = 0x0c80; // Explicit 12.5 V, unlike the demo voltage.
+        status.batteryRaw = batteryRaw; // Explicit 12.5 V by default, unlike the demo voltage.
         const auto bytes = ds::wire::encodeStatus(status, error);
         if (bytes)
           socket.writeDatagram(*bytes, datagram.senderAddress(), datagram.senderPort());
@@ -87,6 +93,122 @@ void connectWindow(ds::MainWindow& window, Peer& peer) {
 class NetworkUiTest : public QObject {
   Q_OBJECT
 private slots:
+  void receivedChartsLeaveGapsAndKeepDemoSeparate() {
+    QTemporaryDir directory;
+    Peer peer;
+    ds::MainWindow window(ds::PreferenceStore(directory.filePath("ui.ini")), nullptr,
+                          std::make_unique<InputBackend>());
+    window.show();
+    auto* chart = child<ds::TelemetryChart>(window, "telemetryChart");
+    child<QCheckBox>(window, "simulateRobot")->setChecked(true);
+    QTRY_VERIFY(!chart->samples().isEmpty());
+    QCOMPARE(chart->source(), ds::TelemetryChart::Source::Simulation);
+    connectWindow(window, peer);
+    QCOMPARE(chart->source(), ds::TelemetryChart::Source::Network);
+    QTRY_VERIFY(chart->samples().size() >= 3);
+    for (const auto& sample : chart->samples())
+      QCOMPARE(sample.voltage, 12.5);
+    window.selectRightView(1);
+    const auto evidence = qEnvironmentVariable("DS_EVIDENCE_DIR");
+    if (!evidence.isEmpty())
+      QVERIFY(window.grab().save(QDir(evidence).filePath("network-charts.png")));
+    peer.replying = false;
+    QTRY_VERIFY(!window.network().link().connection().connected());
+    const auto count = chart->samples().size();
+    peer.socket.writeDatagram(QByteArray("invalid"), QHostAddress::LocalHost,
+                              window.network().link().localPort());
+    QTRY_VERIFY(window.network().link().rejectedCount() > 0);
+    QTest::qWait(300);
+    QCOMPARE(chart->samples().size(), count);
+    peer.replying = true;
+    QTRY_VERIFY(chart->samples().size() > count);
+    QVERIFY(chart->samples()[count].startsSegment);
+    window.network().stop();
+    child<QCheckBox>(window, "simulateRobot")->setChecked(true);
+    QCOMPARE(chart->source(), ds::TelemetryChart::Source::Simulation);
+    QVERIFY(chart->samples().isEmpty());
+  }
+
+  void exportedDiagnosticsDisableAndResetBetweenSessions() {
+    QTemporaryDir directory;
+    Peer peer;
+    auto backend = std::make_unique<InputBackend>();
+    ds::ControllerHub controllers(std::move(backend));
+    controllers.start();
+    ds::NetworkSession session(controllers);
+    QVERIFY(session.start(QHostAddress::LocalHost, peer.socket.localPort(), 0));
+    QTRY_VERIFY(session.canEnable());
+    QVERIFY(session.enable());
+    QTRY_VERIFY(session.enabled());
+    const auto path = directory.filePath(QStringLiteral("diagnóstico recebido.json"));
+    QString error;
+    QVERIFY2(session.saveDiagnostics(path, error), qPrintable(error));
+    QVERIFY(!session.link().connection().enableRequested());
+    QTRY_VERIFY(!peer.controls.last().enabled);
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto exported = file.readAll();
+    const auto report = QJsonDocument::fromJson(exported).object();
+    QCOMPARE(report.value("format").toString(), QStringLiteral("drivestation-linux-diagnostics"));
+    QCOMPARE(report.value("app_version").toString(), QStringLiteral(DRIVESTATION_VERSION));
+    QCOMPARE(report.value("source").toString(), QStringLiteral("experimental-network"));
+    QVERIFY(!report.value("samples").toArray().isEmpty());
+    QCOMPARE(report.value("samples").toArray().first().toObject()
+                 .value("battery_volts").toDouble(), 12.5);
+    QVERIFY(!report.value("connection").toObject().value("enable_requested").toBool());
+    Peer other;
+    other.batteryRaw = 0x0b00;
+    QVERIFY(session.start(QHostAddress::LocalHost, other.socket.localPort(), 0));
+    QVERIFY(session.telemetry().samples().empty());
+    QTRY_VERIFY(!session.telemetry().samples().empty());
+    QCOMPARE(session.telemetry().samples().front().status.voltage(), 11.0);
+    for (const auto& message : session.diagnosticReport().value("messages").toArray())
+      QVERIFY(!message.toObject().value("text").toString().contains(QStringLiteral("Enable requested")));
+    QVERIFY(session.canEnable());
+    QVERIFY(session.enable());
+    QVERIFY(!session.saveDiagnostics(path + QStringLiteral("/child.json"), error));
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!session.link().connection().enableRequested());
+    QVERIFY(!session.saveDiagnostics({}, error));
+    const auto evidence = qEnvironmentVariable("DS_EVIDENCE_DIR");
+    if (!evidence.isEmpty()) {
+      QFile example(QDir(evidence).filePath("diagnostics-example.json"));
+      QVERIFY(example.open(QIODevice::WriteOnly));
+      QCOMPARE(example.write(exported), qint64(exported.size()));
+    }
+  }
+
+  void cancellingExportDialogStillDisablesOperation() {
+    QTemporaryDir directory;
+    Peer peer;
+    ds::MainWindow window(ds::PreferenceStore(directory.filePath("ui.ini")), nullptr,
+                          std::make_unique<InputBackend>());
+    window.show();
+    auto* action = child<QAction>(window, "exportNetworkDiagnostics");
+    QVERIFY(!action->isEnabled());
+    connectWindow(window, peer);
+    QTRY_VERIFY(window.network().canEnable());
+    child<QPushButton>(window, "enable")->click();
+    QTRY_VERIFY(window.network().enabled());
+    bool sawDialog = false;
+    bool disabledBeforeDialog = false;
+    QTimer closer;
+    connect(&closer, &QTimer::timeout, &window, [&] {
+      auto* dialog = child<QFileDialog>(window, "exportDiagnosticsDialog");
+      sawDialog = dialog;
+      disabledBeforeDialog = !window.network().link().connection().enableRequested();
+      if (dialog)
+        dialog->reject();
+    });
+    closer.start(10);
+    action->trigger();
+    closer.stop();
+    QVERIFY(sawDialog);
+    QVERIFY(disabledBeforeDialog);
+    QVERIFY(!window.network().link().connection().enableRequested());
+    QTRY_VERIFY(!peer.controls.last().enabled);
+  }
+
   void discoverySelectionDoesNotConnectOrEnableRobot() {
     QTemporaryDir directory;
     Peer udp;
@@ -304,6 +426,12 @@ private slots:
     auto* console = child<QPlainTextEdit>(window, "messages");
     QTRY_VERIFY(console->toPlainText().contains(QStringLiteral("<b>Robot says hello</b>")));
     QTRY_VERIFY(child<QLabel>(window, "diagnostics")->text().contains(QStringLiteral("2026.1")));
+    bool recordedStdout = false;
+    for (const auto& message : window.network().diagnosticReport().value("messages").toArray())
+      recordedStdout |= message.toObject().value("kind").toString() == QStringLiteral("stdout") &&
+                        message.toObject().value("text").toString() ==
+                            QStringLiteral("<b>Robot says hello</b>");
+    QVERIFY(recordedStdout);
     QCOMPARE(child<QLabel>(window, "dataSource")->text(),
              QStringLiteral("ALFA · TESTES · UDP/TCP"));
     child<QPushButton>(window, "enable")->click();

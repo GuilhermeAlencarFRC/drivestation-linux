@@ -79,9 +79,21 @@ private:
 };
 
 class TelemetryChart : public QWidget {
+  Q_OBJECT
 public:
+  enum class Source { Simulation, Network };
+  struct Sample {
+    double seconds;
+    double trip;
+    double voltage;
+    bool startsSegment;
+  };
   explicit TelemetryChart(QWidget* parent = nullptr);
-  void appendSample(double seconds, double trip, double voltage);
+  void appendSample(double seconds, double trip, double voltage, bool startsSegment = false);
+  void setSource(Source source);
+  Source source() const { return source_; }
+  const QVector<Sample>& samples() const { return samples_; }
+  void advanceTime(double seconds);
   void clear();
   void setWindowSeconds(int seconds);
 
@@ -89,12 +101,9 @@ protected:
   void paintEvent(QPaintEvent*) override;
 
 private:
-  struct Sample {
-    double seconds;
-    double trip;
-    double voltage;
-  };
   QVector<Sample> samples_;
+  Source source_ = Source::Simulation;
+  double endSeconds_ = 0;
   int windowSeconds_ = 12;
 };
 

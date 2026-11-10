@@ -12,6 +12,7 @@
 #include <array>
 
 class QCheckBox;
+class QAction;
 class QCloseEvent;
 class QComboBox;
 class QDialog;
@@ -71,6 +72,7 @@ private:
   void disableOperation();
   void emergencyStopOperation();
   void showRobotConnection();
+  void exportDiagnostics();
   void refreshNetwork();
   void refreshDiscovery();
   void tick();
@@ -101,6 +103,7 @@ private:
   QLabel* elapsed_ = nullptr;
   QLabel* elapsedCaption_ = nullptr;
   QMenu* controlsMenu_ = nullptr;
+  QAction* exportDiagnostics_ = nullptr;
   QLabel* team_ = nullptr;
   QLabel* voltage_ = nullptr;
   QLabel* status_ = nullptr;

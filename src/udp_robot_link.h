@@ -32,11 +32,14 @@ public:
   quint64 sentCount() const { return sentCount_; }
   quint64 receivedCount() const { return receivedCount_; }
   quint64 rejectedCount() const { return rejectedCount_; }
+  qint64 elapsedMs() const { return clock_.isValid() ? clock_.elapsed() : 0; }
   QString lastError() const { return lastError_; }
 
 signals:
   void changed();
   void errorOccurred(const QString& error);
+  void statusReceived(const ds::wire::Status& status, qint64 elapsedMs, qint64 roundTripMs,
+                      bool reconnected);
 
 private:
   void receive();

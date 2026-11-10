@@ -2,6 +2,7 @@
 
 #include "controller_hub.h"
 #include "tcp_robot_link.h"
+#include "telemetry_history.h"
 #include "udp_robot_link.h"
 
 namespace ds {
@@ -28,11 +29,15 @@ public:
   const UdpRobotLink& link() const { return link_; }
   const TcpRobotLink& tcpLink() const { return tcp_; }
   bool usesTcp() const { return tcpPort_ != 0; }
+  const TelemetryHistory& telemetry() const { return telemetry_; }
+  QJsonObject diagnosticReport() const;
+  bool saveDiagnostics(const QString& path, QString& error);
 
 signals:
   void changed();
   void errorOccurred(const QString& error);
   void messageReceived(const ds::tcp::Message& message);
+  void telemetrySampled(const ds::TelemetrySample& sample);
 
 private:
   void updateInputs();
@@ -51,5 +56,8 @@ private:
   bool wasRequested_ = false;
   qint64 enabledAtMs_ = 0;
   qint64 elapsedMs_ = 0;
+  TelemetryHistory telemetry_;
+  QString startedUtc_;
+  quint16 peerPort_ = 0;
 };
 } // namespace ds

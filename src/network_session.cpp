@@ -1,4 +1,7 @@
 #include "network_session.h"
+#include <QDateTime>
+#include <QJsonDocument>
+#include <QSaveFile>
 
 namespace ds {
 NetworkSession::NetworkSession(ControllerHub& controllers, QObject* parent)
@@ -16,8 +19,21 @@ NetworkSession::NetworkSession(ControllerHub& controllers, QObject* parent)
   connect(&controllers_, &ControllerHub::topologyChanging, this, &NetworkSession::disable);
   connect(&controllers_, &ControllerHub::updated, this, &NetworkSession::updateInputs);
   connect(&link_, &UdpRobotLink::changed, this, &NetworkSession::updateState);
+  connect(&link_, &UdpRobotLink::statusReceived, this,
+          [this](const wire::Status& status, qint64 elapsedMs, qint64 roundTripMs, bool reconnected) {
+            if (reconnected)
+              telemetry_.breakSegment();
+            if (const auto sample = telemetry_.append(elapsedMs, roundTripMs, status))
+              emit telemetrySampled(*sample);
+          });
   connect(&link_, &UdpRobotLink::errorOccurred, this, &NetworkSession::errorOccurred);
   connect(&tcp_, &TcpRobotLink::errorOccurred, this, &NetworkSession::errorOccurred);
+  connect(this, &NetworkSession::errorOccurred, this, [this](const QString& error) {
+    telemetry_.event(link_.elapsedMs(), error);
+  });
+  connect(&tcp_, &TcpRobotLink::messageReceived, this, [this](const tcp::Message& message) {
+    telemetry_.message(link_.elapsedMs(), message);
+  });
   connect(&tcp_, &TcpRobotLink::messageReceived, this, &NetworkSession::messageReceived);
   connect(&tcp_, &TcpRobotLink::changed, this, [this] {
     if (!tcp_.active())
@@ -33,7 +49,10 @@ NetworkSession::~NetworkSession() { stop(); }
 bool NetworkSession::start(const QHostAddress& peer, quint16 peerPort, quint16 localPort,
                            quint16 tcpPort) {
   stop();
+  telemetry_.clear();
+  startedUtc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
   peer_ = peer;
+  peerPort_ = peerPort;
   tcpPort_ = tcpPort;
   nextTcpAttemptMs_ = clock_.elapsed();
   controllers_.poll();
@@ -44,11 +63,15 @@ bool NetworkSession::start(const QHostAddress& peer, quint16 peerPort, quint16 l
                   peer.isLoopback() ? QHostAddress::LocalHost : QHostAddress::AnyIPv4, false);
   if (started)
     timer_.start();
+  telemetry_.event(link_.elapsedMs(), started ? QStringLiteral("Session started disabled.")
+                                             : QStringLiteral("Session start failed."));
   return started;
 }
 
 void NetworkSession::stop() {
   timer_.stop();
+  if (link_.connection().active())
+    telemetry_.event(link_.elapsedMs(), QStringLiteral("Session disconnected."));
   link_.stop();
   tcp_.stop();
 }
@@ -121,11 +144,21 @@ bool NetworkSession::canEnable() const {
 bool NetworkSession::enable() {
   controllers_.poll();
   updateInputs();
-  return canEnable() && link_.requestEnable();
+  const bool accepted = canEnable() && link_.requestEnable();
+  if (accepted)
+    telemetry_.event(link_.elapsedMs(), QStringLiteral("Enable requested explicitly."));
+  return accepted;
 }
 
-void NetworkSession::disable() { link_.disable(); }
-void NetworkSession::emergencyStop() { link_.emergencyStop(); }
+void NetworkSession::disable() {
+  if (link_.connection().enableRequested())
+    telemetry_.event(link_.elapsedMs(), QStringLiteral("Disable requested."));
+  link_.disable();
+}
+void NetworkSession::emergencyStop() {
+  telemetry_.event(link_.elapsedMs(), QStringLiteral("E-Stop requested."));
+  link_.emergencyStop();
+}
 void NetworkSession::setMode(wire::Mode mode) {
   if (link_.setMode(mode))
     mode_ = mode;
@@ -205,5 +238,51 @@ QString NetworkSession::statusText() const {
                     : status.mode == wire::Mode::Test     ? QStringLiteral("Test")
                                                           : QStringLiteral("Teleoperated");
   return name + (status.enabled ? QStringLiteral(" Enabled") : QStringLiteral(" Disabled"));
+}
+
+QJsonObject NetworkSession::diagnosticReport() const {
+  auto report = telemetry_.toJson();
+  report.insert(QStringLiteral("format"), QStringLiteral("drivestation-linux-diagnostics"));
+  report.insert(QStringLiteral("format_version"), 1);
+  report.insert(QStringLiteral("app_version"), QStringLiteral(DRIVESTATION_VERSION));
+  report.insert(QStringLiteral("source"), QStringLiteral("experimental-network"));
+  report.insert(QStringLiteral("physical_robot_validated"), false);
+  report.insert(QStringLiteral("started_utc"), startedUtc_);
+  report.insert(QStringLiteral("exported_utc"),
+                QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+  report.insert(QStringLiteral("connection"),
+                QJsonObject{{"peer_ipv4", peer_.toString()}, {"peer_udp_port", peerPort_},
+                             {"local_udp_port", link_.localPort()}, {"tcp_port", tcpPort_},
+                             {"udp_sent", qint64(link_.sentCount())},
+                             {"udp_received", qint64(link_.receivedCount())},
+                             {"udp_rejected", qint64(link_.rejectedCount())},
+                             {"tcp_sent", qint64(tcp_.sentCount())},
+                             {"tcp_received", qint64(tcp_.receivedCount())},
+                             {"status", statusText()},
+                             {"enable_requested", link_.connection().enableRequested()},
+                             {"emergency_stopped", link_.connection().emergencyStopped()},
+                             {"udp_error", link_.lastError()}, {"tcp_error", tcp_.lastError()}});
+  return report;
+}
+
+bool NetworkSession::saveDiagnostics(const QString& path, QString& error) {
+  disable(); // File dialogs and I/O must never preserve a pending Enable.
+  error.clear();
+  if (path.isEmpty()) {
+    error = QStringLiteral("Choose a diagnostics file.");
+    return false;
+  }
+  QSaveFile file(path);
+  file.setDirectWriteFallback(false);
+  if (!file.open(QIODevice::WriteOnly)) {
+    error = file.errorString();
+    return false;
+  }
+  const auto data = QJsonDocument(diagnosticReport()).toJson(QJsonDocument::Indented);
+  if (file.write(data) != data.size() || !file.commit()) {
+    error = file.errorString();
+    return false;
+  }
+  return true;
 }
 } // namespace ds

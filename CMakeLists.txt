@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
-project(DriveStationLinux VERSION 0.9.0 LANGUAGES CXX)
-set(DRIVESTATION_RELEASE_VERSION "${PROJECT_VERSION}-alpha.2")
+project(DriveStationLinux VERSION 0.10.0 LANGUAGES CXX)
+set(DRIVESTATION_RELEASE_VERSION "${PROJECT_VERSION}-alpha.1")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,7 @@ add_library(drivestation_network STATIC
   src/robot_discovery.cpp src/robot_discovery.h
   src/robot_tcp_protocol.cpp src/robot_tcp_protocol.h
   src/tcp_robot_link.cpp src/tcp_robot_link.h
+  src/telemetry_history.cpp src/telemetry_history.h
 )
 target_include_directories(drivestation_network PUBLIC src)
 target_link_libraries(drivestation_network PUBLIC Qt6::Network)
@@ -74,7 +75,11 @@ if(BUILD_TESTING)
   add_executable(network_ui_tests tests/test_network_ui.cpp)
   target_link_libraries(network_ui_tests PRIVATE drivestation_ui Qt6::Test)
   add_test(NAME network_ui COMMAND network_ui_tests)
-  set_tests_properties(network_ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+  set_tests_properties(network_ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+  add_executable(telemetry_tests tests/test_telemetry.cpp)
+  target_link_libraries(telemetry_tests PRIVATE drivestation_ui Qt6::Test)
+  add_test(NAME telemetry COMMAND telemetry_tests)
+  set_tests_properties(telemetry PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
   add_executable(drivestation_tests tests/test_drivestation.cpp)
   target_link_libraries(drivestation_tests PRIVATE drivestation_ui Qt6::Test)
   add_test(NAME drivestation COMMAND drivestation_tests)

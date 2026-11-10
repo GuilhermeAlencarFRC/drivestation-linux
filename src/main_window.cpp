@@ -7,7 +7,10 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDialog>
+#include <QDateTime>
+#include <QDir>
 #include <QEvent>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGridLayout>
@@ -17,6 +20,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -24,6 +28,7 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QTime>
 #include <QTimer>
@@ -178,6 +183,11 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent,
   network_.setStation(static_cast<quint8>(preferences_.station));
   network_.setGameData(preferences_.gameData);
   connect(&network_, &NetworkSession::changed, this, &MainWindow::refresh);
+  connect(&network_, &NetworkSession::telemetrySampled, this, [this](const TelemetrySample& sample) {
+    if (usingNetwork_)
+      chart_->appendSample(sample.elapsedMs / 1000.0, double(sample.roundTripMs),
+                            sample.status.voltage(), sample.startsSegment);
+  });
   connect(&discovery_, &RobotDiscovery::changed, this, &MainWindow::refreshDiscovery);
   connect(&network_, &NetworkSession::errorOccurred, this, [this](const QString& error) {
     appendMessage(QStringLiteral("Network: %1").arg(error));
@@ -702,6 +712,9 @@ QWidget* MainWindow::createMessages() {
   auto* robotConnection = controlsMenu_->addAction(QStringLiteral("Robot connection (UDP/TCP)..."));
   robotConnection->setObjectName(QStringLiteral("robotConnection"));
   connect(robotConnection, &QAction::triggered, this, &MainWindow::showRobotConnection);
+  exportDiagnostics_ = controlsMenu_->addAction(QStringLiteral("Export network diagnostics..."));
+  exportDiagnostics_->setObjectName(QStringLiteral("exportNetworkDiagnostics"));
+  connect(exportDiagnostics_, &QAction::triggered, this, &MainWindow::exportDiagnostics);
   controlsMenu_->addSeparator();
   auto* controls = new QWidgetAction(controlsMenu_);
   controls->setDefaultWidget(createDemoControls());
@@ -774,7 +787,7 @@ QWidget* MainWindow::createDemoControls() {
       discovery_.cancel();
       network_.stop();
       usingNetwork_ = false;
-      chart_->clear();
+      chart_->setSource(TelemetryChart::Source::Simulation);
       lastChartSample_ = -1;
       pressedKeys_.clear();
     }
@@ -833,6 +846,30 @@ void MainWindow::emergencyStopOperation() {
     network_.emergencyStop();
   else
     session_.emergencyStop();
+}
+
+void MainWindow::exportDiagnostics() {
+  if (!usingNetwork_)
+    return;
+  disableOperation();
+  stopRumble();
+  pressedKeys_.clear();
+  const auto directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+  const auto name = QStringLiteral("DriveStation-diagnostics-%1.json")
+                        .arg(QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss")));
+  QFileDialog dialog(this, QStringLiteral("Export network diagnostics"), directory,
+                       QStringLiteral("DriveStation diagnostics (*.json)"));
+  dialog.setObjectName(QStringLiteral("exportDiagnosticsDialog"));
+  dialog.setAcceptMode(QFileDialog::AcceptSave);
+  dialog.setDefaultSuffix(QStringLiteral("json"));
+  dialog.selectFile(name);
+  if (dialog.exec() != QDialog::Accepted || dialog.selectedFiles().isEmpty())
+    return;
+  QString error;
+  if (!network_.saveDiagnostics(dialog.selectedFiles().first(), error))
+    QMessageBox::warning(this, QStringLiteral("Diagnostics not saved"), error);
+  else
+    appendMessage(QStringLiteral("Network diagnostics exported. Enable remains explicit."));
 }
 
 void MainWindow::showRobotConnection() {
@@ -961,7 +998,7 @@ void MainWindow::showRobotConnection() {
       session_.setConnected(false);
       usingNetwork_ = true;
       pressedKeys_.clear();
-      chart_->clear();
+      chart_->setSource(TelemetryChart::Source::Network);
       lastChartSample_ = -1;
       network_.setMode(session_.mode() == DemoSession::Mode::Autonomous ? wire::Mode::Autonomous
                        : session_.mode() == DemoSession::Mode::Test     ? wire::Mode::Test
@@ -1137,6 +1174,7 @@ void MainWindow::requestEnable() {
 }
 
 void MainWindow::refresh() {
+  exportDiagnostics_->setEnabled(usingNetwork_);
   refreshDiscovery();
   modeButtons_[2]->setEnabled(!usingNetwork_);
   simulate_->setEnabled(!network_.link().connection().active());
@@ -1292,6 +1330,8 @@ void MainWindow::tick() {
     chart_->appendSample(session_.simulationSeconds(), session_.tripTime(), session_.voltage());
     lastChartSample_ = session_.simulationSeconds();
   }
+  if (usingNetwork_)
+    chart_->advanceTime(network_.link().elapsedMs() / 1000.0);
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {

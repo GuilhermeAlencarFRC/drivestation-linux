@@ -1,6 +1,6 @@
 # DriveStation Linux
 
-**0.9.0-alpha.2 — ALFA / VERSÃO DE TESTES EM DESENVOLVIMENTO.**
+**0.10.0-alpha.1 — ALFA / VERSÃO DE TESTES EM DESENVOLVIMENTO.**
 
 Esta versão ainda não é final ou homologada. A compatibilidade física com
 NI 26.0/roboRIO não foi validada; os testes de rede usam um par próprio em loopback.
@@ -19,6 +19,8 @@ data/hora UTC e fuso no UDP, além do pacote de download identificado como teste
 A 0.9.0 acrescenta busca mDNS IPv4 por equipe, com seleção manual do endereço.
 A alpha.2 preserva os limites entre rótulos DNS na comparação dos nomes, evitando
 que um ponto literal em um rótulo seja confundido com um separador.
+A 0.10.0 acrescenta gráficos das respostas UDP aceitas e exportação manual de
+diagnósticos de rede em JSON, com histórico limitado e separação da simulação.
 
 ![Prévia da aba Operation no formato da NI](docs/images/ni26-operation.png)
 
@@ -76,7 +78,7 @@ O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
 
 ## Pacote alfa para testes
 
-Extraia o arquivo `drivestation-linux-0.9.0-alpha.2-linux-x86_64-TESTES.tar.gz`
+Extraia o arquivo `drivestation-linux-0.10.0-alpha.1-linux-x86_64-TESTES.tar.gz`
 inteiro e abra `INICIAR-ALFA.sh`. `LEIA-ME-ALFA.txt` explica o estado de testes e
 as dependências; `build-info.json` identifica a versão e as bibliotecas do build.
 O título e o status da janela exibem **ALFA**. O pacote não inicia conexão sozinho.
@@ -96,7 +98,7 @@ CPack gera também o SHA256. O verificador de desenvolvimento requer Python 3.12
 ou posterior, extrai em uma pasta nova e testa os executáveis do próprio arquivo:
 
 ```sh
-python3 packaging/verify-alpha.py dist/drivestation-linux-0.9.0-alpha.2-linux-x86_64-TESTES.tar.gz /tmp/drivestation-alpha-check
+python3 packaging/verify-alpha.py dist/drivestation-linux-0.10.0-alpha.1-linux-x86_64-TESTES.tar.gz /tmp/drivestation-alpha-check
 ```
 
 ## Usar a prévia
@@ -229,7 +231,24 @@ Game Data usa até 1024 bytes UTF-8 e alterações cancelam a habilitação.
 Bateria, Communications, Robot Code e modo/habilitação exibidos vêm da resposta
 UDP. **Waiting for Enable/Disable** distingue o pedido local da confirmação do
 par. Diagnostics mostra TX/RX, rejeições e RTT. O cronômetro mede o pedido local
-de Enable; os gráficos ficam sem amostras nesse perfil.
+de Enable. Charts mostra RTT medido e bateria dessas respostas, identificados
+como **received UDP**, com amostragem a cada 200 ms e até 3000 pontos. Pacotes
+rejeitados não viram amostras. Perdas de comunicação separam os segmentos do
+gráfico, e o eixo de tempo continua avançando durante a ausência de respostas.
+A escala de RTT se ajusta aos dados visíveis; o tooltip mostra os últimos valores.
+Trocar de fonte ou iniciar outra conexão limpa o gráfico.
+
+**F10 → Export network diagnostics...** salva um JSON da sessão de rede atual,
+ou da última conexão após Disconnect. A ação fica indisponível na demo. O diálogo
+sugere Downloads; só há escrita após escolher o arquivo. A operação é desabilitada
+antes do diálogo e da gravação, inclusive se houver cancelamento ou erro de escrita;
+retomar exige Enable explícito. O arquivo usa substituição atômica via QSaveFile.
+O formato `drivestation-linux-diagnostics` versão 1 inclui versão do aplicativo,
+horários UTC, destino, contadores, erros, amostras e até 256 mensagens/eventos de
+rede. Campos textuais são limitados a 2048 caracteres, com indicador de truncamento;
+contadores informam descartes pelo limite do histórico. Outra conexão reinicia esse
+histórico. Não grava as entradas brutas dos controles, o campo Game Data ou dados da demo.
+É um formato próprio, sem compatibilidade com o leitor ou os logs binários da NI.
 
 Messages recebe stdout, warnings e erros TCP com sequência, tempo informado pelo
 par, código, localização e stack. O conteúdo é texto simples; controles não

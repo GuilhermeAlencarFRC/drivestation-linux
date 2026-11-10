@@ -19,7 +19,7 @@ funcionamento do recurso correspondente com um robô real.
 | Controles | SDL2: descoberta, seis slots estáveis, eixos, botões, POV e rumble | Testes com dispositivos virtuais; modelos físicos, ordem persistente e equivalência de mapeamento NI pendentes |
 | Configuração | Preferências, Practice local e envio de Game Data TCP | Alterar tempos/dados cancela a execução; execução de dashboard pendente |
 | Diagnóstico | UDP TX/RX, rejeições, RTT; estado TCP e versões recebidas | Versões exercitadas em loopback; demais serviços e ações no robô pendentes |
-| Console e gráficos | Console TCP com stdout/erros; curvas somente na demo | Texto simples, parser e limites exercitados; curvas reais e gravação de logs pendentes |
+| Console e gráficos | Console TCP; gráficos de RTT/bateria recebidos por UDP; exportação manual JSON | Histórico limitado, lacunas sem interpolação e separação demo/rede; formato próprio, sem leitor de logs NI; demais curvas e compatibilidade física pendentes |
 | Rede | UDP/TCP, descritores, Game Data, UTC/fuso e busca mDNS IPv4 por equipe | Busca/hints com seleção manual e testes em loopback; tipos SDL e compatibilidade física NI ainda pendentes |
 | Desktop Linux | Janela flutuante, instalação CMake e arquivo alfa CPack identificado como testes | Pacote com bibliotecas do sistema; outras distribuições e docking pendentes; Wayland foi verificado em etapa anterior |
 

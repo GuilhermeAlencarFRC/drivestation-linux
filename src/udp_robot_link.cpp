@@ -18,6 +18,7 @@ bool UdpRobotLink::start(const QHostAddress& peer, quint16 peerPort, quint16 loc
                          const QHostAddress& bindAddress, bool automaticSending) {
   stop();
   lastError_.clear();
+  clock_.start();
   sentCount_ = receivedCount_ = rejectedCount_ = 0;
   if (peer.protocol() != QAbstractSocket::IPv4Protocol || peer.isNull() || peer.isMulticast() ||
       peer == QHostAddress::AnyIPv4 || peer == QHostAddress::Broadcast || peerPort == 0 ||
@@ -31,7 +32,6 @@ bool UdpRobotLink::start(const QHostAddress& peer, quint16 peerPort, quint16 loc
   }
   peer_ = peer;
   peerPort_ = peerPort;
-  clock_.start();
   clockSync_.reset();
   connection_.start(static_cast<quint16>(QRandomGenerator::global()->generate()), 0);
   if (automaticSending)
@@ -120,6 +120,7 @@ void UdpRobotLink::receive() {
     ++receivedCount_;
     if (reconnected || status->request == 1)
       clockSync_.request();
+    emit statusReceived(*status, clock_.elapsed(), *connection_.roundTripMs(), reconnected);
   }
   if (socket_.hasPendingDatagrams())
     QTimer::singleShot(0, this, &UdpRobotLink::receive);

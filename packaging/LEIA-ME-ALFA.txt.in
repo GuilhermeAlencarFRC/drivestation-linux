@@ -21,6 +21,12 @@ Find roboRIO busca o hostname da equipe via mDNS IPv4. Escolher uma resposta ou
 um hint apenas preenche IPv4; não conecta nem habilita. USB/TE.AM são sugestões
 não verificadas, e mDNS não autentica a identidade do robô.
 
+Charts mostra RTT e bateria das respostas UDP aceitas, com lacunas durante perda
+de comunicação. F10 > Export network diagnostics... salva manualmente um JSON
+com amostras, mensagens TCP e diagnóstico da sessão atual/última conexão explícita.
+Abrir a exportação desabilita a operação, inclusive quando o diálogo é cancelado.
+O formato é próprio, não é um arquivo de log NI. Não há gravação automática.
+
 AMBIENTE DO PACOTE
 Arquitetura: @CMAKE_SYSTEM_PROCESSOR@ / @CMAKE_SYSTEM_NAME@
 Compilado com Qt @Qt6Core_VERSION@ e @DRIVESTATION_BUILD_LIBC@.
