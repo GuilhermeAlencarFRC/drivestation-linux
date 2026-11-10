@@ -29,6 +29,10 @@ Preferences PreferenceStore::load() const {
   result.dashboard = boundedValue(settings, QStringLiteral("dashboard"), 0, 4);
   result.station = boundedValue(settings, QStringLiteral("station"), 0, 5);
   result.gameData = settings.value(QStringLiteral("gameData")).toString().left(256);
+  for (size_t i = 0; i < result.controllerOrder.size(); ++i)
+    result.controllerOrder[i] = settings.value(QStringLiteral("controllers/slot%1").arg(i))
+                                   .toString().left(65);
+  result.controllerOrder = normalizedControllerOrder(result.controllerOrder);
   for (size_t i = 0; i < result.practiceSeconds.size(); ++i) {
     result.practiceSeconds[i] = boundedValue(settings, QStringLiteral("practice/%1").arg(i),
                                              result.practiceSeconds[i], 600);
@@ -42,6 +46,9 @@ bool PreferenceStore::save(const Preferences& preferences) const {
   settings.setValue(QStringLiteral("dashboard"), std::clamp(preferences.dashboard, 0, 4));
   settings.setValue(QStringLiteral("station"), std::clamp(preferences.station, 0, 5));
   settings.setValue(QStringLiteral("gameData"), preferences.gameData.left(256));
+  const auto order = normalizedControllerOrder(preferences.controllerOrder);
+  for (size_t i = 0; i < order.size(); ++i)
+    settings.setValue(QStringLiteral("controllers/slot%1").arg(i), order[i]);
   for (size_t i = 0; i < preferences.practiceSeconds.size(); ++i) {
     settings.setValue(QStringLiteral("practice/%1").arg(i),
                       std::clamp(preferences.practiceSeconds[i], 0, 600));

@@ -29,11 +29,12 @@ public:
                                         {2, QStringLiteral("Second")}};
   ds::ControllerReading reading{{-32768, 0, 32767}, {true, false, true}, {-1, 315}, false};
   bool readable = true;
+  QHash<ds::ControllerId, ds::ControllerReading> overrides;
   bool initialize(QString&) override { return true; }
   QVector<ds::ControllerInfo> devices(QString&) override { return connected; }
-  std::optional<ds::ControllerReading> read(ds::ControllerId, QString& error) override {
+  std::optional<ds::ControllerReading> read(ds::ControllerId id, QString& error) override {
     if (readable)
-      return reading;
+      return overrides.value(id, reading);
     error = QStringLiteral("Read failed");
     return std::nullopt;
   }
@@ -93,6 +94,39 @@ void connectWindow(ds::MainWindow& window, Peer& peer) {
 class NetworkUiTest : public QObject {
   Q_OBJECT
 private slots:
+  void slotSwapDisablesBeforeSendingNewInputsAndDescriptors() {
+    Peer udp;
+    ds::test::TcpPeer tcp;
+    auto backend = std::make_unique<InputBackend>();
+    backend->overrides.insert(1, {{-32768}, {}, {}, false});
+    backend->overrides.insert(2, {{32767}, {}, {}, false});
+    ds::ControllerHub controllers(std::move(backend));
+    controllers.start();
+    ds::NetworkSession session(controllers);
+    QVERIFY(session.start(QHostAddress::LocalHost, udp.socket.localPort(), 0,
+                           tcp.server.serverPort()));
+    QTRY_VERIFY(session.canEnable());
+    QVERIFY(session.enable());
+    QTRY_VERIFY(session.enabled());
+    QCOMPARE(udp.controls.last().joysticks[0].axes[0], qint8(-128));
+    connect(&controllers, &ds::ControllerHub::topologyChanging, &session, [&] {
+      QVERIFY(!session.enable()); // Reentrant requests cannot re-enable the old mapping.
+    });
+    const auto before = udp.controls.size();
+    QVERIFY(controllers.swapSlots(0, 1));
+    QVERIFY(!session.link().connection().enableRequested());
+    QTRY_COMPARE(udp.controls.last().joysticks[0].axes[0], qint8(127));
+    for (qsizetype i = before; i < udp.controls.size(); ++i)
+      if (udp.controls[i].joysticks[0].axes[0] == 127)
+        QVERIFY(!udp.controls[i].enabled);
+    QTRY_VERIFY(tcp.frames.size() >= 14);
+    QCOMPARE(tcp.frames[tcp.frames.size() - 7].payload.mid(4, 6), QByteArray("Second"));
+    QVERIFY(!session.link().connection().enableRequested());
+    QTRY_VERIFY(session.canEnable());
+    QVERIFY(session.enable());
+    QTRY_VERIFY(session.enabled());
+  }
+
   void receivedChartsLeaveGapsAndKeepDemoSeparate() {
     QTemporaryDir directory;
     Peer peer;

@@ -230,6 +230,11 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent,
     appendMessage(QStringLiteral("USB devices changed or became unavailable. Operation disabled."));
   });
   connect(&controllers_, &ControllerHub::updated, this, &MainWindow::refreshUsb);
+  controllers_.restoreOrder(preferences_.controllerOrder);
+  connect(&controllers_, &ControllerHub::orderChanged, this, [this] {
+    preferences_.controllerOrder = controllers_.savedOrder();
+    savePreferences();
+  });
   connect(&controllers_, &ControllerHub::errorOccurred, this,
           [this](const QString& error) { appendMessage(QStringLiteral("USB: %1").arg(error)); });
   connect(controlsMenu_, &QMenu::aboutToShow, this, &MainWindow::stopRumble);
@@ -535,13 +540,37 @@ QWidget* MainWindow::createUsb() {
   layout->setSpacing(10);
   auto* left = new QVBoxLayout;
   left->setSpacing(3);
-  left->addWidget(label(QStringLiteral("USB Order")));
+  auto* orderHeader = new QHBoxLayout;
+  orderHeader->setSpacing(2);
+  orderHeader->addWidget(label(QStringLiteral("USB Order")), 1);
+  moveControllerUp_ = new QToolButton;
+  moveControllerDown_ = new QToolButton;
+  moveControllerUp_->setText(QStringLiteral("↑"));
+  moveControllerDown_->setText(QStringLiteral("↓"));
+  moveControllerUp_->setObjectName(QStringLiteral("moveControllerUp"));
+  moveControllerDown_->setObjectName(QStringLiteral("moveControllerDown"));
+  moveControllerUp_->setAccessibleName(QStringLiteral("Move selected controller up"));
+  moveControllerDown_->setAccessibleName(QStringLiteral("Move selected controller down"));
+  for (auto* button : {moveControllerUp_, moveControllerDown_}) {
+    button->setProperty("slotOrderControl", true);
+    button->setFixedSize(21, 18);
+    button->setToolTip(QStringLiteral("Swap the selected slot. Operation will be disabled."));
+    orderHeader->addWidget(button);
+  }
+  left->addLayout(orderHeader);
   devices_ = new QListWidget;
   devices_->setObjectName(QStringLiteral("devices"));
   devices_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   for (int i = 0; i < 6; ++i)
     devices_->addItem(QStringLiteral("%1  —").arg(i));
   left->addWidget(devices_, 1);
+  const auto move = [this](int delta) {
+    const int selected = devices_->currentRow();
+    if (controllers_.swapSlots(selected, selected + delta))
+      devices_->setCurrentRow(selected + delta);
+  };
+  connect(moveControllerUp_, &QToolButton::clicked, this, [move] { move(-1); });
+  connect(moveControllerDown_, &QToolButton::clicked, this, [move] { move(1); });
   auto* rescan = new QPushButton(QStringLiteral("Rescan (F1)"));
   rescan->setObjectName(QStringLiteral("rescanControllers"));
   rescan->setToolTip(QStringLiteral("Rescan Linux controllers. Existing slots stay in place."));
@@ -715,6 +744,13 @@ QWidget* MainWindow::createMessages() {
   exportDiagnostics_ = controlsMenu_->addAction(QStringLiteral("Export network diagnostics..."));
   exportDiagnostics_->setObjectName(QStringLiteral("exportNetworkDiagnostics"));
   connect(exportDiagnostics_, &QAction::triggered, this, &MainWindow::exportDiagnostics);
+  forgetMissingControllers_ =
+      controlsMenu_->addAction(QStringLiteral("Forget missing USB reservations"));
+  forgetMissingControllers_->setObjectName(QStringLiteral("forgetMissingControllers"));
+  connect(forgetMissingControllers_, &QAction::triggered, this, [this] {
+    if (controllers_.forgetMissingReservations())
+      appendMessage(QStringLiteral("Missing USB reservations cleared. Enable remains explicit."));
+  });
   controlsMenu_->addSeparator();
   auto* controls = new QWidgetAction(controlsMenu_);
   controls->setDefaultWidget(createDemoControls());
@@ -1160,6 +1196,8 @@ void MainWindow::refreshNetwork() {
 }
 
 void MainWindow::requestEnable() {
+  if (controllers_.changingTopology())
+    return;
   if (usingNetwork_) {
     if (network_.enable())
       appendMessage(QStringLiteral("UDP Enable requested; waiting for robot status."));
@@ -1256,12 +1294,23 @@ void MainWindow::refreshUsb() {
   for (int i = 0; i < ControllerHub::SlotCount; ++i) {
     const auto& slot = snapshot[i];
     auto* item = devices_->item(i);
-    item->setText(
-        QStringLiteral("%1  %2").arg(i).arg(slot.device ? slot.device->name : QStringLiteral("—")));
+    const bool reserved = !controllers_.savedOrder()[i].isEmpty();
+    item->setText(QStringLiteral("%1  %2").arg(i).arg(
+        slot.device ? slot.device->name
+                    : reserved ? QStringLiteral("— [reserved]") : QStringLiteral("—")));
     item->setForeground(slot.reading ? QColor("#72e22d") : QColor("#bcbcbc"));
-    item->setToolTip(slot.error.isEmpty() ? item->text() : slot.error);
+    const auto persistence =
+        reserved ? QStringLiteral("Saved identity. Missing controllers keep their slot reserved.")
+                 : QStringLiteral("Session-only order: no unique persistent identity available.");
+    item->setToolTip((slot.error.isEmpty() ? item->text() : slot.error) + QLatin1Char('\n') + persistence);
   }
   const int selected = devices_->currentRow();
+  const bool movable = selected >= 0 && selected < ControllerHub::SlotCount &&
+                       (snapshot[selected].device || !controllers_.savedOrder()[selected].isEmpty());
+  moveControllerUp_->setEnabled(movable && selected > 0);
+  moveControllerDown_->setEnabled(movable && selected < ControllerHub::SlotCount - 1);
+  if (forgetMissingControllers_)
+    forgetMissingControllers_->setEnabled(controllers_.hasMissingReservations());
   const auto* reading =
       selected >= 0 && selected < ControllerHub::SlotCount && snapshot[selected].reading
           ? &*snapshot[selected].reading
@@ -1423,6 +1472,10 @@ void applyStationStyle(QWidget& widget) {
     QToolButton[windowControl="true"], QToolButton[windowControl="true"]:disabled {
       background: #333; color: #888; border: 1px solid #2d2d2d; font-size: 20px;
     }
+    QToolButton[slotOrderControl="true"] {
+      background: #393939; color: #ededed; border: 1px solid #282828; font-size: 14px; padding: 0;
+    }
+    QToolButton[slotOrderControl="true"]:disabled { color: #777; }
     QToolButton:hover, QPushButton:hover { background: #555; }
     QToolButton:focus, QPushButton:focus { border: 1px solid #888; }
     QPushButton { background: #393939; border: 1px solid #282828; padding: 3px 5px; }

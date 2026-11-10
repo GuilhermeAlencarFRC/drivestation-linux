@@ -1,4 +1,5 @@
 #include "controller_backend.h"
+#include "controller_identity.h"
 
 #include <QHash>
 #include <SDL.h>
@@ -61,6 +62,7 @@ public:
     error.clear();
     SDL_JoystickUpdate();
     QVector<ControllerInfo> result;
+    QSet<ControllerId> present;
     indices_.clear();
     const int count = SDL_NumJoysticks();
     if (count < 0)
@@ -70,9 +72,42 @@ public:
       if (id < 0)
         continue;
       const auto* name = SDL_JoystickNameForIndex(i);
-      result.append({id, name ? QString::fromUtf8(name) : QStringLiteral("Unnamed controller")});
+      present.insert(id);
+      if (!identities_.contains(id)) {
+        // Resolve once per attachment, before publishing the topology. Unsupported
+        // serials never fall back to the enumeration index, path, name or GUID alone.
+        QString key;
+        auto* joystick = handles_.value(id, nullptr);
+        const bool temporary = joystick == nullptr;
+        if (temporary)
+          joystick = SDL_JoystickOpen(i);
+        if (joystick) {
+          if (SDL_JoystickInstanceID(joystick) == id && SDL_JoystickGetAttached(joystick)) {
+            const auto guid = SDL_JoystickGetGUID(joystick);
+            const auto* serial = SDL_JoystickGetSerial(joystick);
+            int length = 0;
+            if (serial)
+              while (length <= 256 && serial[length] != '\0')
+                ++length;
+            if (serial && length <= 256)
+              key = controllerIdentityKey(
+                  QByteArray(reinterpret_cast<const char*>(guid.data), sizeof(guid.data)),
+                  QByteArray(serial, length));
+          }
+          if (temporary)
+            SDL_JoystickClose(joystick);
+        }
+        identities_.insert(id, key);
+      }
+      result.append({id, name ? QString::fromUtf8(name) : QStringLiteral("Unnamed controller"),
+                     identities_.value(id)});
       indices_.insert(id, i);
     }
+    for (auto it = identities_.begin(); it != identities_.end();)
+      if (!present.contains(it.key()))
+        it = identities_.erase(it);
+      else
+        ++it;
     return result;
   }
 
@@ -95,11 +130,17 @@ public:
         failures_.insert(id, {now, error});
         return {};
       }
+      if (SDL_JoystickInstanceID(joystick) != id || !SDL_JoystickGetAttached(joystick)) {
+        SDL_JoystickClose(joystick);
+        error = QStringLiteral("Controller changed during enumeration. Rescan required.");
+        failures_.insert(id, {now, error});
+        return {};
+      }
       handles_.insert(id, joystick);
       failures_.remove(id);
       SDL_JoystickUpdate();
     }
-    if (!SDL_JoystickGetAttached(joystick)) {
+    if (!SDL_JoystickGetAttached(joystick) || SDL_JoystickInstanceID(joystick) != id) {
       error = QStringLiteral("Controller disconnected.");
       return {};
     }
@@ -165,6 +206,7 @@ private:
   bool initialized_ = false;
   int previousEventState_ = SDL_ENABLE;
   QHash<ControllerId, int> indices_;
+  QHash<ControllerId, QString> identities_;
   QHash<ControllerId, SDL_Joystick*> handles_;
   QHash<ControllerId, OpenFailure> failures_;
 };

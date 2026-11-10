@@ -1,5 +1,6 @@
 #include "controller_hub.h"
 
+#include <QHash>
 #include <algorithm>
 #include <utility>
 
@@ -55,12 +56,75 @@ bool ControllerHub::anyReadable() const {
   });
 }
 
+bool ControllerHub::restoreOrder(const ControllerOrder& order) {
+  if (initialized_ || polling_)
+    return false;
+  savedOrder_ = normalizedControllerOrder(order);
+  return true;
+}
+
+bool ControllerHub::hasMissingReservations() const {
+  for (size_t i = 0; i < slots_.size(); ++i)
+    if (!slots_[i].device && !savedOrder_[i].isEmpty())
+      return true;
+  return false;
+}
+
+bool ControllerHub::swapSlots(int from, int to) {
+  if (polling_ || from < 0 || to < 0 || from >= SlotCount || to >= SlotCount || from == to ||
+      (!slots_[from].device && !slots_[to].device && savedOrder_[from].isEmpty() &&
+       savedOrder_[to].isEmpty()))
+    return false;
+  polling_ = true;
+  changingTopology_ = true;
+  stopRumble();
+  emit topologyChanging(); // Disable must see the old mapping before it changes.
+  std::swap(slots_[from], slots_[to]);
+  std::swap(savedOrder_[from], savedOrder_[to]);
+  emit orderChanged();
+  emit updated();
+  changingTopology_ = false;
+  polling_ = false;
+  return true;
+}
+
+bool ControllerHub::forgetMissingReservations() {
+  if (polling_ || !hasMissingReservations())
+    return false;
+  polling_ = true;
+  changingTopology_ = true;
+  stopRumble();
+  emit topologyChanging();
+  for (size_t i = 0; i < slots_.size(); ++i)
+    if (!slots_[i].device)
+      savedOrder_[i].clear();
+  emit orderChanged();
+  emit updated();
+  changingTopology_ = false;
+  polling_ = false;
+  return true;
+}
+
 void ControllerHub::poll() {
   if (!initialized_ || polling_)
     return;
   polling_ = true;
   QString error;
-  auto available = backend_->devices(error);
+  const auto discovered = backend_->devices(error);
+  QVector<ControllerInfo> available;
+  QHash<ControllerId, ControllerInfo> byId;
+  QHash<QString, int> identityCounts;
+  if (error.isEmpty())
+    for (auto device : discovered) {
+      if (device.id < 0 || byId.contains(device.id))
+        continue;
+      if (!validControllerIdentityKey(device.persistentKey))
+        device.persistentKey.clear();
+      if (!device.persistentKey.isEmpty())
+        ++identityCounts[device.persistentKey];
+      byId.insert(device.id, device);
+      available.append(device);
+    }
   if (!error.isEmpty())
     available.clear();
   reportError(error);
@@ -70,31 +134,70 @@ void ControllerHub::poll() {
   for (const auto& device : available)
     if (device.id >= 0)
       connected.insert(device.id);
+  auto nextSlots = slots_;
+  auto nextOrder = savedOrder_;
+  for (auto& key : nextOrder)
+    if (identityCounts.value(key) > 1)
+      key.clear(); // Ambiguous identities cannot restore or reserve a slot.
   QSet<ControllerId> assigned;
-  for (const auto& slot : slots_) {
-    if (slot.device && connected.contains(slot.device->id))
-      assigned.insert(slot.device->id);
+  for (int i = 0; i < SlotCount; ++i) {
+    auto& slot = nextSlots[i];
+    if (!slot.device)
+      continue;
+    const auto it = byId.constFind(slot.device->id);
+    if (it == byId.cend() || (!nextOrder[i].isEmpty() && it->persistentKey != nextOrder[i])) {
+      slot = {};
+    } else {
+      slot.device = it.value();
+      assigned.insert(it->id);
+    }
   }
-  if (connected != knownIds_) {
+  // Restore only a unique reported identity, leaving absent reservations empty.
+  for (const auto& device : available) {
+    if (assigned.contains(device.id) || device.persistentKey.isEmpty() ||
+        identityCounts.value(device.persistentKey) != 1)
+      continue;
+    for (int i = 0; i < SlotCount; ++i)
+      if (!nextSlots[i].device && nextOrder[i] == device.persistentKey) {
+        nextSlots[i].device = device;
+        assigned.insert(device.id);
+        break;
+      }
+  }
+  for (const auto& device : available) {
+    if (assigned.contains(device.id))
+      continue;
+    for (int i = 0; i < SlotCount; ++i)
+      if (!nextSlots[i].device && nextOrder[i].isEmpty()) {
+        nextSlots[i].device = device;
+        assigned.insert(device.id);
+        break;
+      }
+  }
+  for (int i = 0; i < SlotCount; ++i) {
+    const auto& slot = nextSlots[i];
+    if (slot.device && nextOrder[i].isEmpty() && !slot.device->persistentKey.isEmpty() &&
+        identityCounts.value(slot.device->persistentKey) == 1 &&
+        std::find(nextOrder.begin(), nextOrder.end(), slot.device->persistentKey) ==
+            nextOrder.end())
+      nextOrder[i] = slot.device->persistentKey;
+  }
+  bool topologyChanged = connected != knownIds_;
+  for (int i = 0; i < SlotCount; ++i)
+    topologyChanged |= slots_[i].device.has_value() != nextSlots[i].device.has_value() ||
+                       (slots_[i].device && nextSlots[i].device &&
+                        (slots_[i].device->id != nextSlots[i].device->id ||
+                         slots_[i].device->persistentKey != nextSlots[i].device->persistentKey));
+  if (topologyChanged) {
+    changingTopology_ = true;
     stopRumble();
     emit topologyChanging();
   }
+  const bool orderChanged = nextOrder != savedOrder_;
+  slots_ = std::move(nextSlots);
+  savedOrder_ = std::move(nextOrder);
   knownIds_ = connected;
   rumbleFailed_.intersect(connected);
-  for (auto& slot : slots_) {
-    if (slot.device && !connected.contains(slot.device->id))
-      slot = {};
-  }
-  for (const auto& device : available) {
-    if (device.id < 0 || assigned.contains(device.id))
-      continue;
-    auto empty =
-        std::find_if(slots_.begin(), slots_.end(), [](const auto& slot) { return !slot.device; });
-    if (empty == slots_.end())
-      break;
-    empty->device = device;
-    assigned.insert(device.id);
-  }
   unassignedCount_ = std::max(0, static_cast<int>(connected.size() - assigned.size()));
   backend_->retain(assigned);
   for (auto& slot : slots_) {
@@ -109,11 +212,15 @@ void ControllerHub::poll() {
     if (slot.reading && rumbleFailed_.contains(slot.device->id))
       slot.reading->supportsRumble = false;
     if (wasReadable && !slot.reading) {
+      changingTopology_ = true;
       stopRumble();
       emit topologyChanging();
     }
   }
+  if (orderChanged)
+    emit this->orderChanged();
   emit updated();
+  changingTopology_ = false;
   polling_ = false;
 }
 

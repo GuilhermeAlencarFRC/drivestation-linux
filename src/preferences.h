@@ -1,6 +1,7 @@
 #pragma once
 
 #include "practice_sequence.h"
+#include "controller_identity.h"
 
 #include <QString>
 #include <array>
@@ -12,6 +13,7 @@ struct Preferences {
   int dashboard = 0;
   int station = 0;
   QString gameData;
+  ControllerOrder controllerOrder{};
   PracticeSequence::Timings practiceSeconds = PracticeSequence::DefaultSeconds;
 };
 

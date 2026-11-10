@@ -13,6 +13,7 @@ using ControllerId = qint32;
 struct ControllerInfo {
   ControllerId id = -1;
   QString name;
+  QString persistentKey = {}; // Opaque GUID+serial hash; empty means session-only.
 };
 
 struct ControllerReading {

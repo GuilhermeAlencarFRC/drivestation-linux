@@ -3,10 +3,14 @@
 #include "widgets.h"
 
 #include <QLabel>
+#include <QAction>
+#include <QDir>
 #include <QListWidget>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTemporaryDir>
+#include <QSettings>
+#include <QToolButton>
 #include <QtTest>
 #include <SDL.h>
 #include <algorithm>
@@ -51,8 +55,8 @@ public:
     error = failRumble ? QStringLiteral("Rumble failed") : QString();
     return !failRumble;
   }
-  void add(int id, QString name = QStringLiteral("Test controller")) {
-    connected.append({id, std::move(name)});
+  void add(int id, QString name = QStringLiteral("Test controller"), QString key = {}) {
+    connected.append({id, std::move(name), std::move(key)});
     readings.insert(id, {{-32768, 0, 32767}, {true, false}, {45}, true});
   }
 };
@@ -121,6 +125,153 @@ public:
 class ControllerTest : public QObject {
   Q_OBJECT
 private slots:
+  void persistentIdentityRequiresSerialAndValidGuid() {
+    const QByteArray guid(16, 'A');
+    const auto key = ds::controllerIdentityKey(guid, "unit-a");
+    QVERIFY(ds::validControllerIdentityKey(key));
+    QCOMPARE(key, ds::controllerIdentityKey(guid, "unit-a"));
+    QVERIFY(key != ds::controllerIdentityKey(guid, "unit-b"));
+    QVERIFY(key != ds::controllerIdentityKey(QByteArray(16, 'B'), "unit-a"));
+    QVERIFY(ds::controllerIdentityKey(guid, {}).isEmpty());
+    QVERIFY(ds::controllerIdentityKey(QByteArray(16, '\0'), "unit-a").isEmpty());
+    QVERIFY(ds::controllerIdentityKey(QByteArray(15, 'A'), "unit-a").isEmpty());
+    QVERIFY(ds::controllerIdentityKey(guid, QByteArray(257, 'x')).isEmpty());
+    QVERIFY(ds::controllerIdentityKey(guid, QByteArray("a\0b", 3)).isEmpty());
+  }
+
+  void savedOrderRestoresAcrossNewInstanceIdsAndEnumerationOrder() {
+    const auto a = ds::controllerIdentityKey(QByteArray(16, 'A'), "a");
+    const auto b = ds::controllerIdentityKey(QByteArray(16, 'A'), "b");
+    auto backend = std::make_unique<FakeBackend>();
+    auto* fake = backend.get();
+    fake->add(1, "A", a);
+    fake->add(2, "B", b);
+    ds::ControllerHub hub(std::move(backend));
+    hub.start(false);
+    QVERIFY(!hub.restoreOrder({}));
+    QVERIFY(hub.rumble(0, 100, 200));
+    QSignalSpy changed(&hub, &ds::ControllerHub::topologyChanging);
+    connect(&hub, &ds::ControllerHub::topologyChanging, &hub, [&] {
+      QCOMPARE(hub.controllerSlots()[0].device->id, 1); // Still the old mapping.
+      QVERIFY(!hub.swapSlots(0, 1)); // Reentrant mutation is rejected.
+    });
+    QVERIFY(hub.swapSlots(0, 1));
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(fake->commands.last().left, quint16(0));
+    QCOMPARE(hub.controllerSlots()[0].device->id, 2);
+    hub.poll();
+    QCOMPARE(changed.count(), 1);
+    const auto order = hub.savedOrder();
+    QCOMPARE(order[0], b);
+    QCOMPARE(order[1], a);
+    auto restarted = std::make_unique<FakeBackend>();
+    restarted->add(101, "A", a); // Different IDs, A still enumerated before B.
+    restarted->add(202, "B", b);
+    ds::ControllerHub restored(std::move(restarted));
+    QVERIFY(restored.restoreOrder(order));
+    restored.start(false);
+    QCOMPARE(restored.controllerSlots()[0].device->id, 202);
+    QCOMPARE(restored.controllerSlots()[1].device->id, 101);
+    QVERIFY(!restored.swapSlots(-1, 0));
+    QVERIFY(!restored.swapSlots(0, 6));
+    QVERIFY(!restored.swapSlots(0, 0));
+  }
+
+  void missingReservationsDoNotSilentlyBindAnotherController() {
+    const auto a = ds::controllerIdentityKey(QByteArray(16, 'A'), "a");
+    const auto b = ds::controllerIdentityKey(QByteArray(16, 'A'), "b");
+    ds::ControllerOrder order{};
+    order[4] = a;
+    order[2] = b;
+    auto backend = std::make_unique<FakeBackend>();
+    backend->add(11, "A", a);
+    for (int i = 20; i < 28; ++i)
+      backend->add(i); // No persistent identity.
+    ds::ControllerHub hub(std::move(backend));
+    hub.restoreOrder(order);
+    hub.start(false);
+    QCOMPARE(hub.controllerSlots()[4].device->id, 11);
+    QVERIFY(!hub.controllerSlots()[2].device);
+    QVERIFY(hub.hasMissingReservations());
+    QCOMPARE(hub.unassignedCount(), 4);
+    QSignalSpy changed(&hub, &ds::ControllerHub::topologyChanging);
+    QVERIFY(hub.forgetMissingReservations());
+    QCOMPARE(changed.count(), 1);
+    hub.poll(); // A waiting device fills the freed slot without a USB-list change.
+    QCOMPARE(changed.count(), 2);
+    QVERIFY(hub.controllerSlots()[2].device);
+    QCOMPARE(hub.unassignedCount(), 3);
+    QVERIFY(!hub.hasMissingReservations());
+  }
+
+  void duplicateIdentitiesAndInvalidPreferencesAreNotRestored() {
+    const auto key = ds::controllerIdentityKey(QByteArray(16, 'A'), "same");
+    ds::ControllerOrder order{};
+    order[5] = key;
+    auto backend = std::make_unique<FakeBackend>();
+    backend->add(1, "A", key);
+    backend->add(2, "B", key);
+    ds::ControllerHub hub(std::move(backend));
+    hub.restoreOrder(order);
+    hub.start(false);
+    QVERIFY(!hub.controllerSlots()[5].device);
+    QVERIFY(std::all_of(hub.savedOrder().begin(), hub.savedOrder().end(),
+                         [](const auto& value) { return value.isEmpty(); }));
+    QTemporaryDir directory;
+    const auto path = directory.filePath("preferences.ini");
+    ds::Preferences preferences;
+    preferences.controllerOrder[3] = key;
+    ds::PreferenceStore store(path);
+    QVERIFY(store.save(preferences));
+    QCOMPARE(store.load().controllerOrder[3], key);
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue("controllers/slot0", key);
+    settings.setValue("controllers/slot1", "invalid-key");
+    settings.sync();
+    const auto loaded = store.load();
+    QVERIFY(loaded.controllerOrder[0].isEmpty());
+    QVERIFY(loaded.controllerOrder[1].isEmpty());
+    QVERIFY(loaded.controllerOrder[3].isEmpty()); // Both duplicate reservations rejected.
+  }
+
+  void uiSwapCancelsPracticeAndPersistsTheSelectedController() {
+    QTemporaryDir directory;
+    const auto a = ds::controllerIdentityKey(QByteArray(16, 'A'), "a");
+    const auto b = ds::controllerIdentityKey(QByteArray(16, 'A'), "b");
+    const auto path = directory.filePath("order.ini");
+    {
+      auto backend = std::make_unique<FakeBackend>();
+      backend->add(1, "A", a);
+      backend->add(2, "B", b);
+      ds::MainWindow window(ds::PreferenceStore(path), nullptr, std::move(backend));
+      window.selectTab(3);
+      window.show();
+      auto* list = window.findChild<QListWidget*>(QStringLiteral("devices"));
+      window.session().setConnected(true);
+      window.session().setMode(ds::DemoSession::Mode::Practice);
+      QVERIFY(window.session().enable());
+      QVERIFY(window.session().busy());
+      window.findChild<QToolButton*>(QStringLiteral("moveControllerDown"))->click();
+      QVERIFY(!window.session().busy());
+      QCOMPARE(list->currentRow(), 1);
+      QCOMPARE(window.controllers().controllerSlots()[1].device->id, 1);
+      QCOMPARE(ds::PreferenceStore(path).load().controllerOrder[1], a);
+      const auto evidence = qEnvironmentVariable("DS_EVIDENCE_DIR");
+      if (!evidence.isEmpty())
+        QVERIFY(window.grab().save(QDir(evidence).filePath("usb-order.png")));
+    }
+    auto backend = std::make_unique<FakeBackend>();
+    backend->add(10, "A", a);
+    ds::MainWindow restored(ds::PreferenceStore(path), nullptr, std::move(backend));
+    QCOMPARE(restored.controllers().controllerSlots()[1].device->id, 10);
+    QVERIFY(!restored.controllers().controllerSlots()[0].device);
+    auto* forget = restored.findChild<QAction*>(QStringLiteral("forgetMissingControllers"));
+    QVERIFY(forget->isEnabled());
+    forget->trigger();
+    QVERIFY(ds::PreferenceStore(path).load().controllerOrder[0].isEmpty());
+    QCOMPARE(ds::PreferenceStore(path).load().controllerOrder[1], a);
+  }
+
   void normalizationPreservesEndpointsAndCenter() {
     QCOMPARE(ds::normalizedAxis(std::numeric_limits<qint16>::min()), -1.0);
     QCOMPARE(ds::normalizedAxis(0), 0.0);
@@ -289,6 +440,13 @@ private slots:
     const auto found = backend->devices(error);
     QVERIFY(std::any_of(found.begin(), found.end(),
                         [&](const auto& info) { return info.id == device.id; }));
+    const auto info = std::find_if(found.begin(), found.end(),
+                                   [&](const auto& value) { return value.id == device.id; });
+    const auto guid = SDL_JoystickGetGUID(device.handle);
+    const auto* serial = SDL_JoystickGetSerial(device.handle);
+    QCOMPARE(info->persistentKey, ds::controllerIdentityKey(
+                                      QByteArray(reinterpret_cast<const char*>(guid.data), 16),
+                                      serial ? QByteArray(serial) : QByteArray()));
     QVERIFY(backend->read(device.id, error));
     QCOMPARE(SDL_JoystickSetVirtualAxis(device.handle, 0, -32768), 0);
     QCOMPARE(SDL_JoystickSetVirtualAxis(device.handle, 1, 0), 0);
@@ -330,6 +488,23 @@ private slots:
     QVERIFY(!backend->read(device.id, error));
     backend->retain({});
     QVERIFY(!error.isEmpty());
+  }
+
+  void staleSdlIndexCannotReadAReplacementDevice() {
+    VirtualController original;
+    QVERIFY2(original.handle, SDL_GetError());
+    auto backend = ds::makeSdlControllerBackend();
+    QString error;
+    QVERIFY(backend->initialize(error));
+    backend->devices(error); // Cache the old index without retaining a read handle.
+    QVERIFY(original.detach());
+    VirtualController replacement;
+    QVERIFY2(replacement.handle, SDL_GetError());
+    QVERIFY(replacement.id != original.id);
+    QVERIFY(!backend->read(original.id, error));
+    QVERIFY(!error.isEmpty());
+    backend->devices(error);
+    QVERIFY(backend->read(replacement.id, error));
   }
 
   void realSdlFindsControllersAttachedAfterInitialization() {
@@ -450,6 +625,7 @@ private slots:
     QTest::newRow("disconnect") << 4;
     QTest::newRow("close") << 5;
     QTest::newRow("output-error") << 6;
+    QTest::newRow("slot-order") << 7;
   }
   void uiRumbleStopsAndNeverRestartsAfterCancellation() {
     QFETCH(int, cause);
@@ -495,6 +671,9 @@ private slots:
     case 6:
       fake->failRumble = true;
       QTest::qWait(80);
+      break;
+    case 7:
+      QVERIFY(window.controllers().swapSlots(0, 1));
       break;
     }
     QCOMPARE(bar->strength(), quint16(0));

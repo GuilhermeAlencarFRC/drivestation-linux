@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(DriveStationLinux VERSION 0.10.0 LANGUAGES CXX)
+project(DriveStationLinux VERSION 0.11.0 LANGUAGES CXX)
 set(DRIVESTATION_RELEASE_VERSION "${PROJECT_VERSION}-alpha.1")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -32,6 +32,7 @@ target_compile_options(drivestation_network PRIVATE
 
 add_library(drivestation_ui STATIC
   src/controller_backend.h src/sdl_controller_backend.cpp
+  src/controller_identity.cpp src/controller_identity.h
   src/controller_hub.cpp src/controller_hub.h
   src/network_session.cpp src/network_session.h
   src/practice_sequence.cpp src/practice_sequence.h

@@ -104,6 +104,7 @@ private:
   QLabel* elapsedCaption_ = nullptr;
   QMenu* controlsMenu_ = nullptr;
   QAction* exportDiagnostics_ = nullptr;
+  QAction* forgetMissingControllers_ = nullptr;
   QLabel* team_ = nullptr;
   QLabel* voltage_ = nullptr;
   QLabel* status_ = nullptr;
@@ -132,6 +133,8 @@ private:
   QPushButton* disconnectRobot_ = nullptr;
   QLabel* connectionStatus_ = nullptr;
   QListWidget* devices_ = nullptr;
+  QToolButton* moveControllerUp_ = nullptr;
+  QToolButton* moveControllerDown_ = nullptr;
   std::array<QProgressBar*, 6> axes_{};
   std::array<QLabel*, 12> buttons_{};
   PovIndicator* pov_ = nullptr;

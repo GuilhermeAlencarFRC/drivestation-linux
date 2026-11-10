@@ -32,8 +32,8 @@ Arquitetura: @CMAKE_SYSTEM_PROCESSOR@ / @CMAKE_SYSTEM_NAME@
 Compilado com Qt @Qt6Core_VERSION@ e @DRIVESTATION_BUILD_LIBC@.
 O pacote usa bibliotecas e plugins Qt 6 Widgets/Network e SDL2 do sistema.
 Não inclui Qt/SDL nem é um AppImage. Não precisa de instalação como root.
-Foi verificado no Arch Linux x86_64 do desenvolvimento; outras distribuições
-e versões de bibliotecas ainda precisam de validação. Se faltarem bibliotecas
+Há builds separados para Arch Linux x86_64 e Ubuntu 24.04 no CI. Confira os
+metadados deste arquivo em build-info.json. Se faltarem bibliotecas
 ou símbolos, será necessário compilar o projeto no ambiente de destino.
 
 VERIFICAÇÃO LOCAL DE REDE
@@ -46,5 +46,11 @@ Inclui interface Qt, Practice local, controles SDL, UDP/TCP experimental,
 descritores, Game Data, console/versões, relógio e busca mDNS IPv4 por equipe.
 Ainda faltam validação física da busca, mapeamento NI dos controles, Practice em rede,
 telemetria completa e validação física. Não é uma Driver Station oficial NI/FIRST.
+
+USB Devices: as setas trocam slots, interrompem rumble e desabilitam a operação.
+GUID+serial permitem salvar a ordem localmente por uma chave opaca; sem identidade
+única, a ordem vale apenas na sessão. Ausentes mantêm o slot [reserved].
+F10 > Forget missing USB reservations libera só as reservas de ausentes.
+Essa ação também desabilita a operação; retomar sempre exige Enable explícito.
 
 Veja build-info.json e share/doc/DriveStationLinux/README.md para detalhes.

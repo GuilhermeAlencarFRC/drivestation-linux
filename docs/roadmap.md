@@ -2,6 +2,13 @@
 
 ## Situação em 2026-11-10
 
+A 0.11.0-alpha.1 acrescenta troca manual dos seis slots USB, reservas de identidade
+por GUID+serial e restauração quando mudam os IDs temporários ou a enumeração.
+Slots reservados ausentes ficam vazios até reconectar ou liberar explicitamente
+a reserva. Identidades ausentes/repetidas não são usadas para persistência.
+Reordenação e liberação desabilitam antes das alterações. A identidade é fornecida
+pelo driver; validação em modelos físicos e mapeamento NI continuam pendentes.
+
 A 0.10.0-alpha.1 acrescenta gráficos de RTT e bateria das respostas UDP aceitas,
 amostragem a cada 200 ms, histórico limitado e interrupções visíveis após perda
 de comunicação. A exportação manual JSON guarda amostras, mensagens TCP e

@@ -136,7 +136,8 @@ void NetworkSession::updateInputs() {
 bool NetworkSession::canEnable() const {
   const auto& connection = link_.connection();
   const auto& status = connection.status();
-  return connection.active() && status && status->hasRobotCode() && !status->codeInitializing &&
+  return !controllers_.changingTopology() && connection.active() && status &&
+         status->hasRobotCode() && !status->codeInitializing &&
          !status->enabled && !connection.enableRequested() && !connection.emergencyStopped() &&
          inputError_.isEmpty() && (!usesTcp() || tcp_.ready());
 }

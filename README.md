@@ -1,6 +1,6 @@
 # DriveStation Linux
 
-**0.10.0-alpha.1 — ALFA / VERSÃO DE TESTES EM DESENVOLVIMENTO.**
+**0.11.0-alpha.1 — ALFA / VERSÃO DE TESTES EM DESENVOLVIMENTO.**
 
 Esta versão ainda não é final ou homologada. A compatibilidade física com
 NI 26.0/roboRIO não foi validada; os testes de rede usam um par próprio em loopback.
@@ -21,6 +21,8 @@ A alpha.2 preserva os limites entre rótulos DNS na comparação dos nomes, evit
 que um ponto literal em um rótulo seja confundido com um separador.
 A 0.10.0 acrescenta gráficos das respostas UDP aceitas e exportação manual de
 diagnósticos de rede em JSON, com histórico limitado e separação da simulação.
+A 0.11.0 permite trocar os seis slots USB e restaurar a ordem de controles que
+informem GUID e serial, sem usar o índice temporário do dispositivo como identidade.
 
 ![Prévia da aba Operation no formato da NI](docs/images/ni26-operation.png)
 
@@ -78,7 +80,7 @@ O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
 
 ## Pacote alfa para testes
 
-Extraia o arquivo `drivestation-linux-0.10.0-alpha.1-linux-x86_64-TESTES.tar.gz`
+Extraia o arquivo `drivestation-linux-0.11.0-alpha.1-linux-x86_64-TESTES.tar.gz`
 inteiro e abra `INICIAR-ALFA.sh`. `LEIA-ME-ALFA.txt` explica o estado de testes e
 as dependências; `build-info.json` identifica a versão e as bibliotecas do build.
 O título e o status da janela exibem **ALFA**. O pacote não inicia conexão sozinho.
@@ -86,7 +88,7 @@ O título e o status da janela exibem **ALFA**. O pacote não inicia conexão so
 Este arquivo usa Qt/SDL do sistema, sem instalação como root. Não é um AppImage
 e não inclui essas bibliotecas. O build local foi verificado no Arch Linux
 x86_64 com Qt 6.12.0 e glibc 2.44; outras distribuições ainda precisam de validação.
-O build do workflow Ubuntu é separado e não foi executado para esta alfa local.
+O workflow gera um build separado para Ubuntu 24.04; confira os metadados de cada arquivo.
 
 Para gerar um pacote a partir de um build Release testado:
 
@@ -98,7 +100,7 @@ CPack gera também o SHA256. O verificador de desenvolvimento requer Python 3.12
 ou posterior, extrai em uma pasta nova e testa os executáveis do próprio arquivo:
 
 ```sh
-python3 packaging/verify-alpha.py dist/drivestation-linux-0.10.0-alpha.1-linux-x86_64-TESTES.tar.gz /tmp/drivestation-alpha-check
+python3 packaging/verify-alpha.py dist/drivestation-linux-0.11.0-alpha.1-linux-x86_64-TESTES.tar.gz /tmp/drivestation-alpha-check
 ```
 
 ## Usar a prévia
@@ -120,6 +122,26 @@ python3 packaging/verify-alpha.py dist/drivestation-linux-0.10.0-alpha.1-linux-x
 Na aba **USB Devices**, selecione um dos seis slots para inspecionar a entrada.
 Conectar ou remover um dispositivo atualiza a lista; os demais mantêm seus índices.
 **Rescan** e `F1` repetem a descoberta. Dispositivos excedentes aguardam um slot livre.
+
+As setas **↑/↓** trocam o slot selecionado com o vizinho, incluindo slots vazios
+ou reservados. A seleção acompanha o controle movido. A troca interrompe rumble,
+cancela Practice/Enable e envia Disable antes de alterar os dados e descritores
+dos controles na rede. Voltar a operar exige um novo Enable explícito.
+
+Se o SDL informar GUID não nulo e serial, a ordem usa uma chave SHA-256 desses
+valores nas preferências locais; o serial não é gravado em claro. Identidades
+repetidas entre dispositivos conectados não produzem reservas. Sem serial ou
+identidade suficiente, as trocas valem somente na sessão; não há inferência por
+nome, caminho `/dev/input`, GUID isolado ou índice de enumeração.
+Essas identidades são informações do driver, não autenticação do dispositivo.
+
+Um controle ausente mantém o slot marcado **[reserved]**; outro dispositivo não
+o ocupa automaticamente. **F10 → Forget missing USB reservations** libera somente
+as reservas sem controle conectado, desabilitando a operação antes. Dispositivos
+em espera podem ocupar os slots liberados na próxima descoberta. O tooltip informa
+se a posição foi salva ou se vale apenas na sessão. A restauração depende de o
+driver continuar informando a mesma identidade; modelos físicos ainda precisam
+de validação. Não há remapeamento NI/XInput neste incremento.
 
 A tela mostra os seis primeiros eixos normalizados em −1…1, os doze primeiros
 botões e o primeiro POV. O tooltip informa os totais. A leitura conserva até

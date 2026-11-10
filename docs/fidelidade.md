@@ -16,7 +16,7 @@ funcionamento do recurso correspondente com um robô real.
 | Habilitação | Enable/Disable/E-Stop locais ou UDP; A-Stop local | Pedidos separados da confirmação UDP; cancelamentos e reconexão desabilitada testados em loopback |
 | Teclado | Atalhos dentro da aplicação | Enter, Space, Backspace e combinação de habilitação testados; captura global pendente |
 | Status | Demo identificada; perfil UDP mostra bateria/código/estado recebidos; Joysticks usa entrada Linux | Recepção validada com par em loopback; falta equipamento físico |
-| Controles | SDL2: descoberta, seis slots estáveis, eixos, botões, POV e rumble | Testes com dispositivos virtuais; modelos físicos, ordem persistente e equivalência de mapeamento NI pendentes |
+| Controles | SDL2: seis slots, troca manual e reservas persistentes por GUID+serial, eixos, botões, POV e rumble | Identidade ausente/duplicada fica sem reserva; testes com dispositivos virtuais e backends controlados; modelos físicos e equivalência de mapeamento NI pendentes |
 | Configuração | Preferências, Practice local e envio de Game Data TCP | Alterar tempos/dados cancela a execução; execução de dashboard pendente |
 | Diagnóstico | UDP TX/RX, rejeições, RTT; estado TCP e versões recebidas | Versões exercitadas em loopback; demais serviços e ações no robô pendentes |
 | Console e gráficos | Console TCP; gráficos de RTT/bateria recebidos por UDP; exportação manual JSON | Histórico limitado, lacunas sem interpolação e separação demo/rede; formato próprio, sem leitor de logs NI; demais curvas e compatibilidade física pendentes |
