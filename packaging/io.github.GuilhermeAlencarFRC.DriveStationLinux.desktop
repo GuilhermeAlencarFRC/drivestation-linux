@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=DriveStation Linux
-Comment=Offline preview of an independent FRC Driver Station for Linux
+Name=DriveStation Linux (Alfa - testes)
+Comment=Versão alfa de testes da estação FRC independente para Linux
 Exec=drivestation-linux
 Icon=drivestation-linux
 Terminal=false

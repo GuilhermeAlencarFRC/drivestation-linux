@@ -1,9 +1,11 @@
 #include "udp_robot_link.h"
 #include <QNetworkDatagram>
 #include <QRandomGenerator>
+#include <utility>
 
 namespace ds {
-UdpRobotLink::UdpRobotLink(QObject* parent) : QObject(parent), socket_(this), timer_(this) {
+UdpRobotLink::UdpRobotLink(QObject* parent, TimeSource timeSource)
+    : QObject(parent), socket_(this), timer_(this), timeSource_(std::move(timeSource)) {
   timer_.setInterval(wire::SendIntervalMs);
   timer_.setTimerType(Qt::PreciseTimer);
   connect(&timer_, &QTimer::timeout, this, &UdpRobotLink::sendNow);
@@ -30,6 +32,7 @@ bool UdpRobotLink::start(const QHostAddress& peer, quint16 peerPort, quint16 loc
   peer_ = peer;
   peerPort_ = peerPort;
   clock_.start();
+  clockSync_.reset();
   connection_.start(static_cast<quint16>(QRandomGenerator::global()->generate()), 0);
   if (automaticSending)
     timer_.start();
@@ -65,12 +68,24 @@ void UdpRobotLink::sendNow() {
   if (!connection_.active())
     return;
   QString error;
-  const auto packet = wire::encodeControl(connection_.nextControl(clock_.elapsed()), error);
+  const auto nowMs = clock_.elapsed();
+  auto control = connection_.nextControl(nowMs);
+  const bool sendTime = clockSync_.due(nowMs);
+  if (sendTime) {
+    control.time = timeSource_ ? timeSource_(error) : std::nullopt;
+    if (!control.time) {
+      fail(error.isEmpty() ? QStringLiteral("UTC clock source unavailable.") : error);
+      return;
+    }
+  }
+  const auto packet = wire::encodeControl(control, error);
   if (!packet || socket_.writeDatagram(*packet, peer_, peerPort_) != packet->size()) {
     fail(error.isEmpty() ? socket_.errorString() : error);
     return;
   }
   ++sentCount_;
+  if (sendTime)
+    clockSync_.sent(nowMs);
   emit changed();
 }
 
@@ -96,11 +111,15 @@ void UdpRobotLink::receive() {
     }
     QString error;
     const auto status = wire::decodeStatus(datagram.data(), error);
+    const bool wasConnected = connection_.connected();
     if (!status || !connection_.accept(*status, clock_.elapsed())) {
       ++rejectedCount_;
       continue;
     }
+    const bool reconnected = !wasConnected && receivedCount_ > 0;
     ++receivedCount_;
+    if (reconnected || status->request == 1)
+      clockSync_.request();
   }
   if (socket_.hasPendingDatagrams())
     QTimer::singleShot(0, this, &UdpRobotLink::receive);

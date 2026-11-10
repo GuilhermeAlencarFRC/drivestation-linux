@@ -1,0 +1,13 @@
+{
+  "product": "DriveStation Linux",
+  "version": "@DRIVESTATION_RELEASE_VERSION@",
+  "stage": "alpha",
+  "status": "VERSAO DE TESTES EM DESENVOLVIMENTO",
+  "physical_robot_validated": false,
+  "system": "@CMAKE_SYSTEM_NAME@",
+  "architecture": "@CMAKE_SYSTEM_PROCESSOR@",
+  "qt_build_version": "@Qt6Core_VERSION@",
+  "libc_build_version": "@DRIVESTATION_BUILD_LIBC@",
+  "bundled_qt_sdl": false,
+  "scope": "Experimental NI 26.0/roboRIO profile; local loopback validation only"
+}

@@ -1,6 +1,40 @@
 # Plano de desenvolvimento
 
-## Situação em 2026-11-05
+## Situação em 2026-11-10
+
+A 0.9.0-alpha.2 consolida a alfa anterior e corrige a comparação de nomes mDNS:
+os comprimentos dos rótulos são preservados, sem confundir pontos literais com
+separadores. Há regressão para pergunta e proprietário de registro com limites
+de rótulos diferentes, mantendo compressão e comparação sem distinguir maiúsculas.
+Os limites do nome expandido incluem os bytes de comprimento e a raiz, conforme
+[RFC 1035, seção 3.1](https://www.rfc-editor.org/rfc/rfc1035.html#section-3.1).
+
+## Marcos anteriores — 2026-11-09
+
+A 0.9.0-alpha.1 acrescenta resolução mDNS IPv4 por equipe, sugestões de endereço
+USB/TE.AM identificadas como não verificadas e seleção manual sem controle implícito.
+O parser tem limites de tamanho, nomes/compressão e registros; a busca tem cancelamento,
+prazo e expiração. A validação usa loopback, não multicast ou equipamento físico.
+
+A 0.8.0-alpha.1 é a primeira alfa empacotada, explicitamente identificada como
+versão de testes. Acrescenta data/hora UTC e fuso ao UDP, resposta a solicitações
+validadas e controle de frequência dos reenvios. O arquivo CPack inclui launcher,
+instruções, metadados e checksum; o teste de extração exercita o próprio pacote.
+Descoberta, interpretação física do protocolo e paridade com NI permanecem pendentes.
+
+A versão 0.7.0 acrescenta TCP iniciado pela estação, descritores dos seis slots,
+Game Data, console, erros e versões. Há limites de stream, deadlines e cancelamento
+da habilitação por perda/ressincronização TCP, mesmo com UDP ativo. Os testes usam
+um par próprio em loopback; ainda faltam data/hora, descoberta, mapeamento NI dos
+controles e validação física. O tipo/usos dos eixos brutos SDL permanecem desconhecidos.
+
+A evolução 0.6.0 integra a interface ao transporte UDP experimental por uma
+NetworkSession separada da demonstração. Inclui destino IPv4 explícito, comandos
+Teleop/Autonomous/Test, seis slots SDL, status/bateria recebidos, cancelamentos e
+E-Stop persistente durante a vida do processo. Practice permanece local. A
+validação dessa integração usa loopback. Naquele marco, TCP e metadados ainda
+estavam pendentes; a 0.7.0 acima avança esses itens. Os registros
+0.5.0 abaixo descrevem o marco anterior, antes da ligação à interface.
 
 A primeira prévia desktop está implementada no commit `abb1f18`: C++17, Qt
 Widgets, cinco abas principais, três visualizações à direita, preferências e
@@ -28,8 +62,9 @@ estáveis, eixos, botões, POV e rumble. O marco 4 tem testes com dispositivos
 virtuais, mas ainda requer validação em modelos físicos, ordem persistente e
 mapeamento equivalente ao da NI. A versão 0.5.0 acrescenta codec UDP, política de conexão e transporte Qt Network,
 com verificador executável em loopback. Perda, corrupção, origem, duplicação e
-sequência são testadas. O marco 5 ainda exige TCP, descoberta, data/hora,
-integração da UI e validação com NI 26.0/roboRIO; o teste local não o conclui.
+sequência são testadas. As versões 0.6/0.7 ligam a UI e o TCP a essa base.
+O marco 5 ainda exige validar a descoberta e o protocolo com NI 26.0/roboRIO;
+o teste local não o conclui.
 Veja a [validação de USB](validacao-usb.md).
 
 ## 1. Fixar a referência

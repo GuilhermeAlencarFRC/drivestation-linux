@@ -1,4 +1,4 @@
-name: Linux package
+name: Linux alpha test package
 
 on:
   workflow_dispatch:
@@ -29,26 +29,19 @@ jobs:
           ctest --test-dir build --output-on-failure
       - name: Assemble archive
         run: |
-          package_root="$RUNNER_TEMP/drivestation-package"
-          DESTDIR="$package_root" cmake --install build --prefix /usr
-          cp README.md "$package_root/README.md"
-          printf '%s\n' \
-            'DriveStation Linux: Ubuntu 24.04 / x86_64 build.' \
-            'Requires system Qt 6 Widgets/Network libraries, platform plugins, and SDL2 >= 2.24.' \
-            'This archive is not an AppImage and does not bundle Qt.' \
-            'After extraction, run ./usr/bin/drivestation-linux.' \
-            'Headless UDP loopback check: ./usr/bin/drivestation-network-check --json.' \
-            'GUI preview only. Experimental UDP is checked with a local test peer.' \
-            > "$package_root/PACKAGE.txt"
-          ./build/drivestation-linux --version >> "$package_root/PACKAGE.txt"
-          tar -czf drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz -C "$package_root" .
-          sha256sum drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz > drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz.sha256
+          cpack --config build/CPackConfig.cmake -G TGZ -B dist
+      - name: Verify extracted alpha
+        run: |
+          for archive in dist/*-TESTES.tar.gz; do
+            python3 packaging/verify-alpha.py "$archive" "$RUNNER_TEMP/alpha extraction" > dist/verification.json
+          done
       - name: Upload package and checksum
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: drivestation-linux-ubuntu24.04-x86_64-qt6
+          name: drivestation-linux-alpha-TESTES
           path: |
-            drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz
-            drivestation-linux-ubuntu24.04-x86_64-qt6.tar.gz.sha256
+            dist/*-TESTES.tar.gz
+            dist/*-TESTES.tar.gz.sha256
+            dist/verification.json
           if-no-files-found: error
           retention-days: 30

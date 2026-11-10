@@ -19,7 +19,8 @@ int main(int argc, char* argv[]) {
 
   QCommandLineParser parser;
   parser.setApplicationDescription(
-      QStringLiteral("DriveStation Linux — offline desktop preview; no robot transport."));
+      QStringLiteral("DriveStation Linux — ALFA / VERSÃO DE TESTES. "
+                     "Local demo and explicit experimental roboRIO UDP/TCP."));
   parser.addHelpOption();
   parser.addVersionOption();
   parser.addOption({QStringLiteral("config"),

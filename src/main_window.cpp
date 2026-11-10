@@ -6,7 +6,9 @@
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDialog>
 #include <QEvent>
+#include <QFormLayout>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -80,15 +82,20 @@ QString formatTime(qint64 milliseconds) {
       .arg((milliseconds / 1000) % 60, 2, 10, QLatin1Char('0'))
       .arg((milliseconds / 100) % 10);
 }
+
+QString stationTitle(const QString& source) {
+  return QStringLiteral("DriveStation Linux %1 — ALFA — VERSÃO DE TESTES — %2")
+      .arg(DRIVESTATION_VERSION, source);
+}
 } // namespace
 
 MainWindow::MainWindow(PreferenceStore store, QWidget* parent,
-                       std::unique_ptr<ControllerBackend> backend)
+                       std::unique_ptr<ControllerBackend> backend, DiscoveryTarget discoveryTarget)
     : QWidget(parent), store_(std::move(store)), preferences_(store_.load()), session_(this),
-      controllers_(std::move(backend), this) {
+      controllers_(std::move(backend), this), network_(controllers_, this),
+      discovery_(this, std::move(discoveryTarget)) {
   setObjectName(QStringLiteral("stationWindow"));
-  setWindowTitle(
-      QStringLiteral("DriveStation Linux %1 — Offline preview").arg(DRIVESTATION_VERSION));
+  setWindowTitle(stationTitle(QStringLiteral("Offline preview")));
   setWindowIcon(symbolIcon(Symbol::Operation));
   setMinimumWidth(1024);
   setFixedHeight(200);
@@ -168,19 +175,49 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent,
   selectRightView(0);
   session_.setPracticeTimings(preferences_.practiceSeconds);
   connect(&session_, &DemoSession::changed, this, &MainWindow::refresh);
+  network_.setStation(static_cast<quint8>(preferences_.station));
+  network_.setGameData(preferences_.gameData);
+  connect(&network_, &NetworkSession::changed, this, &MainWindow::refresh);
+  connect(&discovery_, &RobotDiscovery::changed, this, &MainWindow::refreshDiscovery);
+  connect(&network_, &NetworkSession::errorOccurred, this, [this](const QString& error) {
+    appendMessage(QStringLiteral("Network: %1").arg(error));
+  });
+  connect(&network_, &NetworkSession::messageReceived, this, [this](const tcp::Message& message) {
+    if (message.kind == tcp::Message::Kind::Version) {
+      if (!message.endOfVersions)
+        appendMessage(QStringLiteral("TCP version %1: %2").arg(message.name, message.version));
+      return;
+    }
+    const auto kind = message.kind == tcp::Message::Kind::Stdout ? QStringLiteral("stdout")
+                      : message.isError                          ? QStringLiteral("error")
+                                                                 : QStringLiteral("warning");
+    auto text = QStringLiteral("TCP %1 #%2 (%3 s): %4")
+                    .arg(kind)
+                    .arg(message.sequence)
+                    .arg(message.seconds)
+                    .arg(message.text);
+    if (message.kind == tcp::Message::Kind::Error) {
+      text += QStringLiteral("\nCode: %1").arg(message.errorCode);
+      if (!message.location.isEmpty())
+        text += QStringLiteral("\n") + message.location;
+      if (!message.stack.isEmpty())
+        text += QStringLiteral("\n") + message.stack;
+    }
+    appendMessage(text);
+  });
   connect(qApp, &QGuiApplication::applicationStateChanged, this,
           [this](Qt::ApplicationState state) {
             if (state != Qt::ApplicationActive) {
               stopRumble();
               pressedKeys_.clear();
-              session_.disable();
+              disableOperation();
             }
           });
   connect(&controllers_, &ControllerHub::topologyChanging, this, [this] {
     stopRumble();
     pressedKeys_.clear();
-    session_.disable();
-    appendMessage(QStringLiteral("USB devices changed or became unavailable. Demo disabled."));
+    disableOperation();
+    appendMessage(QStringLiteral("USB devices changed or became unavailable. Operation disabled."));
   });
   connect(&controllers_, &ControllerHub::updated, this, &MainWindow::refreshUsb);
   connect(&controllers_, &ControllerHub::errorOccurred, this,
@@ -199,13 +236,17 @@ MainWindow::MainWindow(PreferenceStore store, QWidget* parent,
 
 MainWindow::~MainWindow() {
   stopRumble();
+  discovery_.cancel();
+  network_.stop();
   qApp->removeEventFilter(this);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
   stopRumble();
   pressedKeys_.clear();
-  session_.disable();
+  disableOperation();
+  discovery_.cancel();
+  network_.stop();
   QWidget::closeEvent(event);
 }
 
@@ -235,6 +276,15 @@ QWidget* MainWindow::createOperation() {
     left->addWidget(modeButtons_[i]);
   }
   connect(group, &QButtonGroup::idClicked, this, [this](int id) {
+    if (usingNetwork_) {
+      if (id == static_cast<int>(DemoSession::Mode::Practice))
+        return;
+      network_.setMode(id == 1   ? wire::Mode::Autonomous
+                       : id == 3 ? wire::Mode::Test
+                                 : wire::Mode::Teleoperated);
+      appendMessage(QStringLiteral("UDP mode changed; enable explicitly to operate."));
+      return;
+    }
     session_.setMode(static_cast<DemoSession::Mode>(id));
     appendMessage(
         QStringLiteral("Demo mode: %1 (disabled).").arg(DemoSession::modeName(session_.mode())));
@@ -263,10 +313,11 @@ QWidget* MainWindow::createOperation() {
   autoStop_->setToolTip(QStringLiteral("Backspace: stop Practice Autonomous; resume at Teleop."));
   stop_ = new QPushButton(QStringLiteral("E-Stop"));
   stop_->setObjectName(QStringLiteral("emergencyStop"));
-  stop_->setToolTip(QStringLiteral("Space: latch emergency stop until Reset demo."));
+  stop_->setToolTip(
+      QStringLiteral("Space: latch emergency stop. UDP requires application restart."));
   connect(enable_, &QPushButton::clicked, this, &MainWindow::requestEnable);
-  connect(disable_, &QPushButton::clicked, this, [this] { session_.disable(); });
-  connect(stop_, &QPushButton::clicked, this, [this] { session_.emergencyStop(); });
+  connect(disable_, &QPushButton::clicked, this, &MainWindow::disableOperation);
+  connect(stop_, &QPushButton::clicked, this, &MainWindow::emergencyStopOperation);
   connect(autoStop_, &QPushButton::clicked, this, [this] { session_.autonomousStop(); });
   layout->addWidget(operationColumn);
   auto* line = new QFrame;
@@ -326,7 +377,8 @@ QWidget* MainWindow::createOperation() {
   station_->setCurrentIndex(preferences_.station);
   connect(station_, &QComboBox::currentIndexChanged, this, [this](int index) {
     preferences_.station = index;
-    session_.disable();
+    disableOperation();
+    network_.setStation(static_cast<quint8>(index));
     savePreferences();
   });
   station_->setFixedWidth(88);
@@ -432,6 +484,7 @@ QWidget* MainWindow::createSetup() {
     grid->addWidget(input, i, 1);
     connect(input, &QSpinBox::valueChanged, this, [this, i](int value) {
       preferences_.practiceSeconds[i] = value;
+      disableOperation();
       session_.setPracticeTimings(preferences_.practiceSeconds);
       savePreferences();
     });
@@ -447,7 +500,8 @@ QWidget* MainWindow::createSetup() {
   layout->addLayout(timing, 1);
   connect(teamInput_, &QSpinBox::valueChanged, this, [this](int team) {
     preferences_.team = team;
-    session_.disable();
+    discovery_.cancel();
+    disableOperation();
     savePreferences();
     refresh();
   });
@@ -456,6 +510,8 @@ QWidget* MainWindow::createSetup() {
     savePreferences();
   });
   connect(gameData_, &QLineEdit::textChanged, this, [this](const QString& data) {
+    if (!network_.setGameData(data))
+      return;
     preferences_.gameData = data;
     savePreferences();
   });
@@ -608,9 +664,11 @@ QWidget* MainWindow::createStatus() {
   status_->setAlignment(Qt::AlignCenter);
   status_->setMinimumHeight(46);
   layout->addWidget(status_);
-  dataSource_ = label(QStringLiteral("OFFLINE"));
+  dataSource_ = label(QStringLiteral("ALFA · EM TESTES"));
   dataSource_->setObjectName(QStringLiteral("dataSource"));
   dataSource_->setAlignment(Qt::AlignCenter);
+  dataSource_->setToolTip(QStringLiteral(
+      "Versão alfa de testes. Compatibilidade com NI 26.0/roboRIO físico ainda não validada."));
   layout->addWidget(dataSource_);
   return result;
 }
@@ -641,6 +699,9 @@ QWidget* MainWindow::createMessages() {
   auto* clear = controlsMenu_->addAction(QStringLiteral("Clear messages"));
   clear->setObjectName(QStringLiteral("clearMessages"));
   connect(clear, &QAction::triggered, messages_, &QPlainTextEdit::clear);
+  auto* robotConnection = controlsMenu_->addAction(QStringLiteral("Robot connection (UDP/TCP)..."));
+  robotConnection->setObjectName(QStringLiteral("robotConnection"));
+  connect(robotConnection, &QAction::triggered, this, &MainWindow::showRobotConnection);
   controlsMenu_->addSeparator();
   auto* controls = new QWidgetAction(controlsMenu_);
   controls->setDefaultWidget(createDemoControls());
@@ -691,7 +752,7 @@ QWidget* MainWindow::createDemoControls() {
   auto* layout = new QVBoxLayout(result);
   layout->setContentsMargins(10, 6, 10, 8);
   layout->setSpacing(8);
-  footer_ = label(QStringLiteral("OFFLINE PREVIEW · No robot commands"));
+  footer_ = label(QStringLiteral("ALFA — VERSÃO DE TESTES · No robot commands"));
   footer_->setObjectName(QStringLiteral("footer"));
   footer_->setWordWrap(true);
   layout->addWidget(footer_);
@@ -709,6 +770,14 @@ QWidget* MainWindow::createDemoControls() {
   reset_->setFixedHeight(21);
   layout->addWidget(reset_);
   connect(simulate_, &QCheckBox::toggled, this, [this](bool enabled) {
+    if (enabled) {
+      discovery_.cancel();
+      network_.stop();
+      usingNetwork_ = false;
+      chart_->clear();
+      lastChartSample_ = -1;
+      pressedKeys_.clear();
+    }
     session_.setConnected(enabled);
     tickClock_.restart();
     appendMessage(enabled ? QStringLiteral("Simulated robot connected (local data).")
@@ -754,7 +823,311 @@ void MainWindow::appendMessage(const QString& message) {
       QTime::currentTime().toString(QStringLiteral("HH:mm:ss")), message));
 }
 
+void MainWindow::disableOperation() {
+  session_.disable();
+  network_.disable();
+}
+
+void MainWindow::emergencyStopOperation() {
+  if (usingNetwork_)
+    network_.emergencyStop();
+  else
+    session_.emergencyStop();
+}
+
+void MainWindow::showRobotConnection() {
+  disableOperation();
+  stopRumble();
+  pressedKeys_.clear();
+  if (!connectionDialog_) {
+    connectionDialog_ = new QDialog(this);
+    connectionDialog_->setObjectName(QStringLiteral("robotConnectionDialog"));
+    connectionDialog_->setMinimumWidth(520);
+    connectionDialog_->setWindowTitle(stationTitle(QStringLiteral("Robot connection")));
+    auto* layout = new QVBoxLayout(connectionDialog_);
+    auto* description = label(QStringLiteral(
+        "Experimental roboRIO UDP/TCP. Connect sends inputs, initially disabled.\n"
+        "Find resolves a team hostname; choosing an address does not connect. Practice is local.\n"
+        "Physical compatibility is unverified."));
+    description->setWordWrap(true);
+    layout->addWidget(description);
+    auto* fields = new QFormLayout;
+    robotAddress_ = new QLineEdit(QStringLiteral("127.0.0.1"));
+    robotAddress_->setObjectName(QStringLiteral("robotAddress"));
+    robotAddress_->setMaxLength(15);
+    fields->addRow(QStringLiteral("Robot IPv4"), robotAddress_);
+    robotPort_ = spinBox(wire::RobotPort, 65535, QStringLiteral("robotPort"));
+    robotPort_->setMinimum(1);
+    fields->addRow(QStringLiteral("Robot UDP port"), robotPort_);
+    localPort_ = spinBox(wire::StationPort, 65535, QStringLiteral("localPort"));
+    localPort_->setToolTip(QStringLiteral("0 chooses an ephemeral port for local tests."));
+    fields->addRow(QStringLiteral("Local UDP port"), localPort_);
+    useTcp_ = new QCheckBox(QStringLiteral("Descriptors and robot console"));
+    useTcp_->setObjectName(QStringLiteral("useTcp"));
+    useTcp_->setChecked(true);
+    fields->addRow(QStringLiteral("Use TCP"), useTcp_);
+    tcpPort_ = spinBox(tcp::RobotPort, 65535, QStringLiteral("tcpPort"));
+    tcpPort_->setMinimum(1);
+    fields->addRow(QStringLiteral("Robot TCP port"), tcpPort_);
+    connect(useTcp_, &QCheckBox::toggled, this, [this](bool enabled) {
+      tcpPort_->setEnabled(enabled && !network_.link().connection().active());
+    });
+    layout->addLayout(fields);
+    auto* discoveryRow = new QHBoxLayout;
+    discoveryRow->addWidget(label(QStringLiteral("Discovery team")));
+    discoveryTeam_ = spinBox(preferences_.team, 65535, QStringLiteral("discoveryTeam"));
+    discoveryTeam_->setFixedWidth(70);
+    discoveryRow->addWidget(discoveryTeam_);
+    findRobot_ = new QPushButton(QStringLiteral("Find roboRIO"));
+    findRobot_->setObjectName(QStringLiteral("findRobot"));
+    findRobot_->setAutoDefault(false);
+    cancelDiscovery_ = new QPushButton(QStringLiteral("Cancel search"));
+    cancelDiscovery_->setObjectName(QStringLiteral("cancelDiscovery"));
+    cancelDiscovery_->setAutoDefault(false);
+    discoveryRow->addWidget(findRobot_);
+    discoveryRow->addWidget(cancelDiscovery_);
+    layout->addLayout(discoveryRow);
+    discoveryResults_ = new QListWidget;
+    discoveryResults_->setObjectName(QStringLiteral("discoveryResults"));
+    discoveryResults_->setFixedHeight(85);
+    layout->addWidget(discoveryResults_);
+    useDiscovery_ = new QPushButton(QStringLiteral("Use selected address"));
+    useDiscovery_->setObjectName(QStringLiteral("useDiscoveryAddress"));
+    useDiscovery_->setAutoDefault(false);
+    layout->addWidget(useDiscovery_);
+    discoveryStatus_ = label({});
+    discoveryStatus_->setObjectName(QStringLiteral("discoveryStatus"));
+    discoveryStatus_->setWordWrap(true);
+    layout->addWidget(discoveryStatus_);
+    connect(discoveryTeam_, &QSpinBox::valueChanged, teamInput_, &QSpinBox::setValue);
+    connect(findRobot_, &QPushButton::clicked, this, [this] {
+      if (network_.link().connection().active())
+        return;
+      disableOperation();
+      pressedKeys_.clear();
+      discovery_.start(preferences_.team);
+    });
+    connect(cancelDiscovery_, &QPushButton::clicked, this, [this] { discovery_.cancel(); });
+    connect(discoveryResults_, &QListWidget::currentRowChanged, this, [this] {
+      useDiscovery_->setEnabled(discoveryResults_->currentItem() &&
+                                !network_.link().connection().active());
+    });
+    connect(useDiscovery_, &QPushButton::clicked, this, [this] {
+      if (network_.link().connection().active() || !discoveryResults_->currentItem())
+        return;
+      const auto address = discoveryResults_->currentItem()->data(Qt::UserRole).toString();
+      if (discoveryResults_->currentItem()->data(Qt::UserRole + 1).toBool() &&
+          !discovery_.addresses().contains(QHostAddress(address))) {
+        refreshDiscovery();
+        return;
+      }
+      disableOperation();
+      discovery_.cancel();
+      pressedKeys_.clear();
+      robotAddress_->setText(address);
+    });
+    connect(robotAddress_, &QLineEdit::textChanged, this, [this] {
+      if (discovery_.active() || !discovery_.addresses().isEmpty())
+        discovery_.cancel();
+    });
+    connectionStatus_ = label(QStringLiteral("Disconnected. No network traffic until Connect."));
+    connectionStatus_->setObjectName(QStringLiteral("connectionStatus"));
+    connectionStatus_->setWordWrap(true);
+    layout->addWidget(connectionStatus_);
+    auto* actions = new QHBoxLayout;
+    connectRobot_ = new QPushButton(QStringLiteral("Connect"));
+    connectRobot_->setObjectName(QStringLiteral("connectRobot"));
+    disconnectRobot_ = new QPushButton(QStringLiteral("Disconnect"));
+    disconnectRobot_->setObjectName(QStringLiteral("disconnectRobot"));
+    auto* done = new QPushButton(QStringLiteral("Close"));
+    done->setObjectName(QStringLiteral("closeRobotConnection"));
+    for (auto* button : {connectRobot_, disconnectRobot_, done}) {
+      button->setAutoDefault(false);
+      actions->addWidget(button);
+    }
+    layout->addLayout(actions);
+    connect(done, &QPushButton::clicked, connectionDialog_, &QDialog::hide);
+    connect(disconnectRobot_, &QPushButton::clicked, this, [this] {
+      discovery_.cancel();
+      network_.stop();
+      pressedKeys_.clear();
+      appendMessage(QStringLiteral("UDP disconnected. Final Disable sent on a best-effort basis."));
+      refresh();
+    });
+    connect(connectRobot_, &QPushButton::clicked, this, [this] {
+      discovery_.cancel();
+      const QHostAddress address(robotAddress_->text().trimmed());
+      disableOperation();
+      session_.setConnected(false);
+      usingNetwork_ = true;
+      pressedKeys_.clear();
+      chart_->clear();
+      lastChartSample_ = -1;
+      network_.setMode(session_.mode() == DemoSession::Mode::Autonomous ? wire::Mode::Autonomous
+                       : session_.mode() == DemoSession::Mode::Test     ? wire::Mode::Test
+                                                                        : wire::Mode::Teleoperated);
+      const bool started =
+          network_.start(address, static_cast<quint16>(robotPort_->value()),
+                         static_cast<quint16>(localPort_->value()),
+                         useTcp_->isChecked() ? static_cast<quint16>(tcpPort_->value()) : 0);
+      if (started)
+        appendMessage(QStringLiteral("UDP started: %1:%2, local port %3. Enable is explicit.")
+                          .arg(address.toString())
+                          .arg(robotPort_->value())
+                          .arg(network_.link().localPort()));
+      refresh();
+    });
+  }
+  const bool active = network_.link().connection().active();
+  robotAddress_->setEnabled(!active);
+  robotPort_->setEnabled(!active);
+  localPort_->setEnabled(!active);
+  useTcp_->setEnabled(!active);
+  tcpPort_->setEnabled(!active && useTcp_->isChecked());
+  connectRobot_->setEnabled(!active);
+  disconnectRobot_->setEnabled(active);
+  refreshDiscovery();
+  connectionDialog_->show();
+  connectionDialog_->raise();
+  connectionDialog_->activateWindow();
+}
+
+void MainWindow::refreshDiscovery() {
+  if (!discoveryResults_)
+    return;
+  const bool connected = network_.link().connection().active();
+  const auto selected = discoveryResults_->currentItem()
+                            ? discoveryResults_->currentItem()->data(Qt::UserRole).toString()
+                            : QString();
+  const bool selectedResolved = discoveryResults_->currentItem() &&
+                                discoveryResults_->currentItem()->data(Qt::UserRole + 1).toBool();
+  const QSignalBlocker listBlocker(discoveryResults_);
+  const QSignalBlocker teamBlocker(discoveryTeam_);
+  discoveryTeam_->setValue(preferences_.team);
+  discoveryResults_->clear();
+  QStringList present;
+  const auto add = [&](const QHostAddress& address, const QString& origin, bool resolved) {
+    const auto text = address.toString();
+    if (present.contains(text))
+      return;
+    present.append(text);
+    auto* item =
+        new QListWidgetItem(QStringLiteral("%1 · %2").arg(text, origin), discoveryResults_);
+    item->setData(Qt::UserRole, text);
+    item->setData(Qt::UserRole + 1, resolved);
+    if (text == selected && resolved == selectedResolved)
+      discoveryResults_->setCurrentItem(item);
+  };
+  for (const auto& address : discovery_.addresses())
+    add(address, QStringLiteral("mDNS response · robot identity unverified"), true);
+  add(QHostAddress(QStringLiteral("172.22.11.2")), QStringLiteral("USB hint · not checked"), false);
+  if (const auto address = discovery::teamAddress(preferences_.team))
+    add(*address, QStringLiteral("TE.AM hint · not checked"), false);
+  discoveryResults_->setEnabled(!connected);
+  discoveryTeam_->setEnabled(!connected);
+  findRobot_->setEnabled(!connected && !discovery_.active() && preferences_.team > 0);
+  findRobot_->setToolTip(QStringLiteral("mDNS one-shot lookup for %1; set a team number first.")
+                             .arg(discovery::robotHostname(preferences_.team)));
+  cancelDiscovery_->setEnabled(discovery_.active() || !discovery_.addresses().isEmpty());
+  useDiscovery_->setEnabled(!connected && discoveryResults_->currentItem());
+  discoveryStatus_->setText(discovery_.statusText());
+}
+
+void MainWindow::refreshNetwork() {
+  const auto& link = network_.link();
+  const auto& connection = link.connection();
+  const auto& status = connection.status();
+  const bool connected = connection.connected();
+  const bool requested = connection.enableRequested();
+  setWindowTitle(stationTitle(QStringLiteral("Experimental network")));
+  const QSignalBlocker blocker(simulate_);
+  simulate_->setChecked(false);
+  team_->setText(QString::number(preferences_.team));
+  voltage_->setText(status ? QStringLiteral("%1 V").arg(status->voltage(), 0, 'f', 2)
+                           : QStringLiteral("--.--"));
+  battery_->setVoltage(status ? status->voltage() : 0, connected);
+  lamps_[0]->setLit(connected);
+  lamps_[1]->setLit(status && status->hasRobotCode() && !status->codeInitializing);
+  for (int i = 0; i < 2; ++i)
+    lamps_[i]->setToolTip(QStringLiteral("State received from the configured UDP peer."));
+  status_->setText(network_.statusText());
+  status_->setStyleSheet(connection.emergencyStopped()
+                             ? QStringLiteral("color: #ff625a; font-weight: bold;")
+                             : QStringLiteral("font-weight: bold;"));
+  const int mode = network_.mode() == wire::Mode::Autonomous ? 1
+                   : network_.mode() == wire::Mode::Test     ? 3
+                                                             : 0;
+  modeButtons_[mode]->setChecked(true);
+  modeButtons_[2]->setToolTip(QStringLiteral("Practice is available only in the local demo."));
+  enable_->setEnabled(network_.canEnable());
+  enable_->setChecked(network_.enabled());
+  enable_->setToolTip(QStringLiteral("Request UDP Enable. Shortcut: hold [ ] \\."));
+  disable_->setEnabled(connection.active());
+  disable_->setChecked(!requested && !network_.enabled());
+  stop_->setEnabled(connection.active() && !connection.emergencyStopped());
+  autoStop_->setEnabled(false);
+  reset_->setEnabled(false);
+  elapsed_->setText(formatTime(network_.elapsedMs()));
+  elapsed_->setToolTip(
+      QStringLiteral("Local time since UDP Enable request; not robot match time."));
+  dataSource_->setVisible(true);
+  dataSource_->setText(settingsError_       ? QStringLiteral("ALFA · PREFERENCES ERROR")
+                       : network_.usesTcp() ? QStringLiteral("ALFA · TESTES · UDP/TCP")
+                                            : QStringLiteral("ALFA · TESTES · UDP"));
+  footer_->setText(
+      QStringLiteral("Network sends robot commands. E-Stop remains latched until exit."));
+  QString rio = QStringLiteral("Not received"), library = QStringLiteral("Not received");
+  for (const auto& version : network_.tcpLink().versions()) {
+    if (version.deviceType != 0)
+      continue;
+    if (version.name == QStringLiteral("roboRIO image"))
+      rio = version.version.left(24);
+    if (version.name == QStringLiteral("FRC_Lib_Version"))
+      library = version.version.left(24);
+  }
+  diagnostics_->setText(QStringLiteral("DS: %1 (UDP)\nTX: %2  RX: %3  Rejected: %4\n"
+                                       "RTT: %5 ms\nTCP: %6\nRIO: %7\nLib: %8")
+                            .arg(DRIVESTATION_VERSION)
+                            .arg(link.sentCount())
+                            .arg(link.receivedCount())
+                            .arg(link.rejectedCount())
+                            .arg(connection.roundTripMs()
+                                     ? QString::number(*connection.roundTripMs())
+                                     : QStringLiteral("—"))
+                            .arg(!network_.usesTcp()          ? QStringLiteral("Off")
+                                 : network_.tcpLink().ready() ? QStringLiteral("Synchronized")
+                                                              : QStringLiteral("Not synchronized"))
+                            .arg(rio, library));
+  if (connectionDialog_) {
+    const bool active = connection.active();
+    robotAddress_->setEnabled(!active);
+    robotPort_->setEnabled(!active);
+    localPort_->setEnabled(!active);
+    useTcp_->setEnabled(!active);
+    tcpPort_->setEnabled(!active && useTcp_->isChecked());
+    connectRobot_->setEnabled(!active);
+    disconnectRobot_->setEnabled(active);
+    connectionStatus_->setText(
+        QStringLiteral("%1 · local port %2 · UDP TX %3 / RX %4\nTCP TX %5 / RX %6\n%7")
+            .arg(network_.statusText())
+            .arg(link.localPort())
+            .arg(link.sentCount())
+            .arg(link.receivedCount())
+            .arg(network_.tcpLink().sentCount())
+            .arg(network_.tcpLink().receivedCount())
+            .arg(!network_.inputError().isEmpty() ? network_.inputError()
+                 : !link.lastError().isEmpty()    ? link.lastError()
+                                                  : network_.tcpLink().lastError()));
+  }
+  refreshUsb();
+}
+
 void MainWindow::requestEnable() {
+  if (usingNetwork_) {
+    if (network_.enable())
+      appendMessage(QStringLiteral("UDP Enable requested; waiting for robot status."));
+    return;
+  }
   if (session_.enable()) {
     tickClock_.restart();
     appendMessage(session_.mode() == DemoSession::Mode::Practice
@@ -764,7 +1137,19 @@ void MainWindow::requestEnable() {
 }
 
 void MainWindow::refresh() {
+  refreshDiscovery();
+  modeButtons_[2]->setEnabled(!usingNetwork_);
+  simulate_->setEnabled(!network_.link().connection().active());
+  reset_->setEnabled(!usingNetwork_);
+  if (usingNetwork_) {
+    refreshNetwork();
+    return;
+  }
+  setWindowTitle(stationTitle(QStringLiteral("Offline preview")));
   const bool connected = session_.connected();
+  modeButtons_[2]->setToolTip(QStringLiteral("Practice sequence in the local demo."));
+  for (int i = 0; i < 2; ++i)
+    lamps_[i]->setToolTip(QStringLiteral("Local robot simulation. No network data."));
   const QSignalBlocker blocker(simulate_);
   simulate_->setChecked(connected);
   team_->setText(QString::number(preferences_.team));
@@ -776,10 +1161,9 @@ void MainWindow::refresh() {
   status_->setText(session_.status());
   const bool practice = session_.mode() == DemoSession::Mode::Practice;
   const bool pending = practice && connected && session_.practice().pendingEnable();
-  dataSource_->setText(!connected           ? QStringLiteral("OFFLINE")
-                       : pending            ? QStringLiteral("SIMULATED · WILL ENABLE")
-                       : session_.enabled() ? QStringLiteral("SIMULATED · ENABLED")
-                                            : QStringLiteral("SIMULATED · DISABLED"));
+  dataSource_->setText(!connected ? QStringLiteral("ALFA · EM TESTES")
+                       : pending  ? QStringLiteral("ALFA · SIM · WILL ENABLE")
+                                  : QStringLiteral("ALFA · SIMULATED"));
   const bool flash = pending && (static_cast<qint64>(session_.simulationSeconds() * 2) % 2 == 0);
   status_->setStyleSheet(session_.emergencyStopped()
                              ? QStringLiteral("color: #ff625a; font-weight: bold;")
@@ -805,9 +1189,9 @@ void MainWindow::refresh() {
           ? QStringLiteral("Local Practice elapsed time (includes waits). Phase left: %1")
                 .arg(formatTime(session_.practice().remainingMs()))
           : QStringLiteral("Elapsed time in the local demonstration."));
-  dataSource_->setVisible(connected || settingsError_);
+  dataSource_->setVisible(true);
   if (settingsError_)
-    dataSource_->setText(QStringLiteral("PREFERENCES NOT SAVED"));
+    dataSource_->setText(QStringLiteral("ALFA · PREFERENCES ERROR"));
   footer_->setText(settingsError_ ? QStringLiteral("Preferences not saved. Check file permissions.")
                                   : QStringLiteral("Local simulation only. No robot commands."));
   if (session_.practice().phase() != lastPracticePhase_) {
@@ -903,21 +1287,27 @@ void MainWindow::tick() {
   if (cancelled)
     appendMessage(
         QStringLiteral("Demo cancelled after delayed update; enable explicitly to restart."));
-  if (session_.connected() && session_.simulationSeconds() - lastChartSample_ >= 0.2) {
+  if (!usingNetwork_ && session_.connected() &&
+      session_.simulationSeconds() - lastChartSample_ >= 0.2) {
     chart_->appendSample(session_.simulationSeconds(), session_.tripTime(), session_.voltage());
     lastChartSample_ = session_.simulationSeconds();
   }
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
-  if (event->type() == QEvent::Hide && watched == this)
+  if (event->type() == QEvent::Hide && (watched == this || watched == connectionDialog_))
+    discovery_.cancel();
+  if (event->type() == QEvent::Hide && watched == this) {
     stopRumble();
+    pressedKeys_.clear();
+    disableOperation();
+  }
   if (event->type() == QEvent::ApplicationDeactivate ||
       (event->type() == QEvent::WindowDeactivate && watched == this &&
        !QApplication::activePopupWidget())) {
     stopRumble();
     pressedKeys_.clear();
-    session_.disable();
+    disableOperation();
   }
   if (event->type() == QEvent::FocusIn)
     pressedKeys_.clear();
@@ -939,18 +1329,19 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
     return true;
   }
   const bool editing = qobject_cast<QLineEdit*>(widget) || qobject_cast<QSpinBox*>(widget);
-  if (key->key() == Qt::Key_Backspace && !editing && session_.autonomousStop()) {
+  if (key->key() == Qt::Key_Backspace && !editing && !usingNetwork_ && session_.autonomousStop()) {
     pressedKeys_.clear();
     return true;
   }
-  if (key->key() == Qt::Key_Space && session_.connected()) {
+  if (key->key() == Qt::Key_Space &&
+      (usingNetwork_ ? network_.link().connection().active() : session_.connected())) {
     pressedKeys_.clear();
-    session_.emergencyStop();
+    emergencyStopOperation();
     return true;
   }
   if (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) {
     pressedKeys_.clear();
-    session_.disable();
+    disableOperation();
     // Preserve editingFinished on team number and other text fields.
     if (!qobject_cast<QLineEdit*>(widget) && !qobject_cast<QSpinBox*>(widget))
       return true;
@@ -972,6 +1363,7 @@ void applyStationStyle(QWidget& widget) {
   widget.setStyleSheet(QStringLiteral(R"(
     QWidget { color: #ededed; font-family: "Arial", "Liberation Sans", "Sans Serif"; font-size: 13px; }
     QWidget#stationWindow { background: #262626; }
+    QDialog#robotConnectionDialog { background: #444444; }
     QFrame#panel, QWidget#messagePanel, QWidget#chartPanel {
       background: #444444; border: 1px solid #242424; border-radius: 4px;
     }

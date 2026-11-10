@@ -121,6 +121,11 @@ private slots:
     ds::MainWindow window(ds::PreferenceStore(directory.filePath(QStringLiteral("ui.ini"))));
     window.show();
     QTest::qWait(10);
+    QVERIFY(window.windowTitle().contains(QStringLiteral("VERSÃO DE TESTES")));
+    QVERIFY(window.windowTitle().contains(QStringLiteral(DRIVESTATION_VERSION)));
+    auto* alphaLabel = window.findChild<QLabel*>(QStringLiteral("dataSource"));
+    QVERIFY(alphaLabel && alphaLabel->isVisible());
+    QVERIFY(alphaLabel->text().contains(QStringLiteral("ALFA")));
     auto* pages = window.findChild<QStackedWidget*>(QStringLiteral("pages"));
     QVERIFY(pages);
     for (int i = 0; i < 5; ++i) {

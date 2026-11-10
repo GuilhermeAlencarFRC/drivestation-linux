@@ -1,13 +1,24 @@
 # DriveStation Linux
 
+**0.9.0-alpha.2 — ALFA / VERSÃO DE TESTES EM DESENVOLVIMENTO.**
+
+Esta versão ainda não é final ou homologada. A compatibilidade física com
+NI 26.0/roboRIO não foi validada; os testes de rede usam um par próprio em loopback.
+
 Reimplementação independente para Linux da **NI FRC Driver Station**, com foco
 em fidelidade visual e funcional à experiência usada com **roboRIO**.
 
-**Estado atual: prévia desktop com Practice local e entrada Linux por SDL2.**
+**Estado atual: prévia desktop com Practice local, entrada SDL2 e UDP/TCP experimental na interface.**
 Controles são detectados em seis slots, com eixos, botões, POV e teste de rumble.
 A integração foi exercitada com dispositivos virtuais SDL; modelos físicos ainda
-precisam de validação. A base UDP experimental pode ser exercitada em loopback;
-a integração da interface com roboRIO continua pendente.
+precisam de validação. A interface envia comandos e entradas ao destino IPv4
+informado explicitamente; os testes usam um par UDP em loopback. A compatibilidade
+física com roboRIO ainda não foi validada. O TCP envia descritores e Game Data,
+e recebe console, erros e versões do par de teste. A alfa 0.8.0 acrescenta
+data/hora UTC e fuso no UDP, além do pacote de download identificado como testes.
+A 0.9.0 acrescenta busca mDNS IPv4 por equipe, com seleção manual do endereço.
+A alpha.2 preserva os limites entre rótulos DNS na comparação dos nomes, evitando
+que um ponto literal em um rótulo seja confundido com um separador.
 
 ![Prévia da aba Operation no formato da NI](docs/images/ni26-operation.png)
 
@@ -63,13 +74,38 @@ cmake --install build --prefix "$HOME/.local"
 O binário será instalado em `~/.local/bin`, junto de um atalho de desktop e um
 ícone nos diretórios correspondentes. O binário depende do Qt e do SDL2 instalados.
 
+## Pacote alfa para testes
+
+Extraia o arquivo `drivestation-linux-0.9.0-alpha.2-linux-x86_64-TESTES.tar.gz`
+inteiro e abra `INICIAR-ALFA.sh`. `LEIA-ME-ALFA.txt` explica o estado de testes e
+as dependências; `build-info.json` identifica a versão e as bibliotecas do build.
+O título e o status da janela exibem **ALFA**. O pacote não inicia conexão sozinho.
+
+Este arquivo usa Qt/SDL do sistema, sem instalação como root. Não é um AppImage
+e não inclui essas bibliotecas. O build local foi verificado no Arch Linux
+x86_64 com Qt 6.12.0 e glibc 2.44; outras distribuições ainda precisam de validação.
+O build do workflow Ubuntu é separado e não foi executado para esta alfa local.
+
+Para gerar um pacote a partir de um build Release testado:
+
+```sh
+cpack --config build/CPackConfig.cmake -G TGZ -B dist
+```
+
+CPack gera também o SHA256. O verificador de desenvolvimento requer Python 3.12
+ou posterior, extrai em uma pasta nova e testa os executáveis do próprio arquivo:
+
+```sh
+python3 packaging/verify-alpha.py dist/drivestation-linux-0.9.0-alpha.2-linux-x86_64-TESTES.tar.gz /tmp/drivestation-alpha-check
+```
+
 ## Usar a prévia
 
 - As abas à esquerda são Operation, Diagnostics, Setup, USB Devices e CAN/Power.
 - À direita, Messages, Charts e Both alternam a visualização.
 - Setup salva equipe, dashboard, dados de jogo e tempos de prática. A seleção
   de dashboard é uma preferência; não inicia outro aplicativo neste marco.
-- A engrenagem do console abre os controles locais; `F10` também abre esse menu.
+- A engrenagem do console abre os controles e a conexão UDP/TCP; `F10` também abre esse menu.
 - **Simulate robot**, nesse menu, ativa dados gerados localmente. Enable/Disable e E-Stop
   alteram apenas essa demonstração. Não são enviados comandos ao robô.
 - `Enter` desabilita a demonstração; `Space` trava E-Stop dentro da aplicação.
@@ -132,12 +168,107 @@ O watchdog local é de 250 ms; atraso de envio de 100 ms também cancela a
 habilitação. Esses são limites da implementação, sem garantia de tempo real do
 sistema operacional ou declaração sobre os limites do firmware NI.
 
-**A interface gráfica continua usando DemoSession.** Esta etapa não liga seus
-botões à rede, não envia entradas USB a um robô e não aplica rumble recebido.
-TCP, descoberta, data/hora e descritores ainda faltam. O perfil foi testado com
+O verificador não captura USB. A interface pode usar uma sessão UDP separada da
+demonstração, descrita abaixo. Nenhuma das duas aplica rumble recebido.
+O TCP, o relógio e a busca de endereço são descritos a seguir. O perfil foi testado com
 um par próprio, não com capturas NI 26.0 ou firmware roboRIO 2026.
 Veja a [decisão técnica](docs/decisoes/0006-transporte-udp.md) e a
 [validação de rede](docs/validacao-rede.md).
+
+## Conectar pela interface — alfa experimental
+
+Abra a engrenagem ou `F10` e selecione **Robot connection (UDP/TCP)...**. Informe o
+IPv4 literal e as portas. O destino inicial é `127.0.0.1`, porta 1110; a porta
+local padrão é 1150. Porta local 0 escolhe uma porta efêmera para testes.
+O campo IPv4 continua explícito. A busca por equipe pode ajudar a preenchê-lo,
+sem conectar ou habilitar automaticamente.
+
+**Find roboRIO** consulta `roborio-<equipe>-frc.local` com mDNS IPv4 one-shot, sem
+Avahi/NSS obrigatório. A busca envia até duas consultas por interface IPv4 ativa
+com multicast e tem prazo local de 2,5 segundos. IPv6, CNAME e navegação DNS-SD
+contínua não são implementados nesse perfil.
+
+A lista distingue **mDNS response** de sugestões **USB hint** (`172.22.11.2`) e
+**TE.AM hint** (`10.TE.AM.2`, para equipes 1–25599). Sugestões não são sondadas;
+uma resposta mDNS também não autentica a identidade nem valida o protocolo do robô.
+Equipes até 65535 podem consultar o hostname, mas não recebem TE.AM inválido.
+
+Não há seleção automática. Escolha uma linha e pressione **Use selected address**
+para preencher IPv4; depois, **Connect** inicia o transporte desabilitado. **Enable**
+continua separado. A busca é bloqueada enquanto o transporte estiver ativo.
+Trocar equipe/endereço, fechar o diálogo, Connect/Disconnect ou ativar a demo cancela
+a busca. Resultados mDNS expiram em até dez segundos e precisam estar válidos ao
+aplicar; no máximo dezesseis endereços ficam na lista. O código verifica ID,
+pergunta, origem/porta e comprimentos antes de aceitar a resposta.
+
+A busca foi exercitada com um respondedor próprio em loopback, não em rede física
+com roboRIO. Sua resposta e os hints não substituem a validação UDP/TCP ao conectar.
+
+**Use TCP** vem marcado, com porta padrão 1740 no mesmo IPv4. O aplicativo inicia
+o TCP depois da primeira resposta UDP válida; em caso de falha, tenta novamente
+com intervalo mínimo de um segundo enquanto a sessão UDP estiver conectada.
+Desmarcar **Use TCP** seleciona explicitamente o perfil anterior, somente UDP.
+
+**Connect** encerra a demo e inicia o envio desabilitado. Só uma resposta válida,
+recente e com código disponível permite um **Enable** explícito. Com TCP ativo,
+também é necessário que o snapshot local de descritores/dados tenha sido enviado
+ao socket; isso não significa confirmação de interpretação pelo robô. Teleop,
+Autonomous e Test enviam comandos; Practice e A-Stop continuam exclusivos da
+demo. Os seis slots SDL seguem seus índices, incluindo tags vazias para slots
+ausentes. Entradas além de 12 eixos, 32 botões ou 12 POVs, ou POV inválido,
+cancelam a habilitação e bloqueiam novo Enable até corrigir a entrada. Não há
+truncamento silencioso.
+
+O TCP envia os seis descritores, inclusive slots vazios, e Game Data ao conectar
+e quando esses metadados mudam. Os nomes usam UTF-8 com limite de 255 bytes;
+nomes incompatíveis bloqueiam Enable. A ordem e as contagens correspondem à
+entrada SDL. O tipo de controle é desconhecido (`-1`), `Is Xbox` é falso e os
+usos dos eixos são desconhecidos (`0xff`): ainda não há equivalência NI/XInput.
+Game Data usa até 1024 bytes UTF-8 e alterações cancelam a habilitação.
+
+Bateria, Communications, Robot Code e modo/habilitação exibidos vêm da resposta
+UDP. **Waiting for Enable/Disable** distingue o pedido local da confirmação do
+par. Diagnostics mostra TX/RX, rejeições e RTT. O cronômetro mede o pedido local
+de Enable; os gráficos ficam sem amostras nesse perfil.
+
+Messages recebe stdout, warnings e erros TCP com sequência, tempo informado pelo
+par, código, localização e stack. O conteúdo é texto simples; controles não
+imprimíveis são substituídos. Diagnostics mostra as versões recebidas de
+`roboRIO image` e `FRC_Lib_Version`; demais versões aparecem no console. Desconectar
+limpa os dados de versão anteriores. Há limite de 32 registros de versão e 200
+blocos de console.
+
+O parser trata fragmentação e concatenação do stream, heartbeat vazio e tags
+desconhecidas. O perfil limita frames a 8192 bytes incluindo ID, buffer a 16388
+bytes, fila de envio a 16384 bytes, e recepção a 512 frames e 256 KiB por segundo.
+Conexão sem sucesso após 1500 ms, frame incompleto após 1000 ms, excesso de dados
+ou tag conhecida malformada encerram o TCP. Esses são limites locais, sem garantia
+de tempo real. A queda ou ressincronização TCP cancela Enable mesmo com UDP ativo;
+reconectar e reenviar metadados nunca reabilita automaticamente.
+
+O UDP inclui data/hora UTC e fuso do sistema na primeira transmissão. Um pedido
+`0x01` em resposta válida recente, ou reconexão após perda de comunicação, agenda
+novo envio com intervalo mínimo de um segundo. Pacotes inválidos, repetidos ou de
+outra origem não agendam esse envio. Sem pedidos ou reconexão, o relógio não é
+reenviado periodicamente. Ano válido no fio: 1900–2155; janeiro é zero.
+O campo de microssegundos usa a precisão de milissegundos disponível no Qt.
+Fuso: identificador do sistema, até 128 bytes ASCII imprimíveis sem espaços.
+O perfil envia data e fuso juntos; sua interpretação física ainda não foi validada.
+Isso não ajusta o relógio do computador. Watchdogs usam tempo monotônico e não
+dependem de mudanças no relógio de parede; erro ao obter o horário encerra o link.
+
+Disable/Enter, perda de foco, ocultação, abertura do diálogo de conexão, mudança
+de modo/equipe/estação/tempos, perda de leitura ou mudança de USB cancelam a
+habilitação. Timeout ou atraso de envio também exigem novo Enable. **E-Stop/Space**
+permanece travado na sessão UDP até encerrar o aplicativo, inclusive após
+Disconnect/Connect, troca para demo e Reset demo. A resposta do robô nunca limpa
+essa trava.
+
+**Disconnect** e fechamento tentam enviar um último pacote desabilitado; UDP
+não garante a entrega. Endereço, portas, conexão e habilitação não são persistidos;
+reabrir inicia sem tráfego. Após Disconnect, **Simulate robot** permite voltar à demo.
+Os testes automatizados só se conectam a `127.0.0.1`, com backend de controles
+de teste. Não houve conexão a um robô físico nesta etapa.
 
 ## Practice na demonstração
 
@@ -190,8 +321,7 @@ documentação WPILib e capturas da NI 26.0. A comparação completa de todas as
 abas com essa versão continua pendente.
 
 Não há captura de teclado fora da aplicação, ordenação persistente de controles,
-integração com dashboards, encaixe automático da janela ou
-transporte conectado à interface gráfica. Campos sem fonte de dados exibem indisponibilidade.
+integração com dashboards ou encaixe automático da janela. Campos sem fonte de dados exibem indisponibilidade.
 Sons de Practice, suspensão física e a paridade exata com a NI ainda não foram
 validados. O protocolo UDP experimental tem testes próprios; compatibilidade física e
 paridade completa com a NI permanecem sem validação.

@@ -1,4 +1,6 @@
 #include "robot_protocol.h"
+#include <QDate>
+#include <QTime>
 
 namespace ds::wire {
 namespace {
@@ -62,6 +64,18 @@ qint8 quantizeAxis(qint16 value) {
   return static_cast<qint8>(value < 0 ? (value - 255) / 256 : value / 256);
 }
 
+bool validTimeData(const TimeData& time) {
+  if (time.microseconds >= 1000000 ||
+      !QDate(1900 + time.yearSince1900, time.month + 1, time.day).isValid() ||
+      !QTime(time.hour, time.minute, time.second).isValid() || time.timezone.isEmpty() ||
+      time.timezone.size() > MaxTimeZoneBytes)
+    return false;
+  for (const auto character : time.timezone)
+    if (static_cast<quint8>(character) < 33 || static_cast<quint8>(character) > 126)
+      return false;
+  return true;
+}
+
 std::optional<QByteArray> encodeControl(const Control& control, QString& error) {
   error.clear();
   if (!validMode(control.mode) || control.station > 5 || control.joysticks.size() > MaxJoysticks) {
@@ -106,6 +120,27 @@ std::optional<QByteArray> encodeControl(const Control& control, QString& error) 
     byte(packet, static_cast<quint8>(data.size()));
     packet.append(data);
   }
+  if (control.time) {
+    const auto& time = *control.time;
+    if (!validTimeData(time)) {
+      error = QStringLiteral("Invalid UDP UTC date/time or timezone.");
+      return {};
+    }
+    byte(packet, 11); // ID plus ten date/time bytes.
+    byte(packet, 0x0f);
+    word(packet, time.microseconds >> 16);
+    word(packet, time.microseconds & 0xffff);
+    for (const auto value :
+         {time.second, time.minute, time.hour, time.day, time.month, time.yearSince1900})
+      byte(packet, value);
+    byte(packet, static_cast<quint8>(time.timezone.size() + 1));
+    byte(packet, 0x10);
+    packet.append(time.timezone);
+  }
+  if (packet.size() > MaxDatagram) {
+    error = QStringLiteral("UDP control exceeds the datagram limit.");
+    return {};
+  }
   return packet;
 }
 
@@ -130,9 +165,36 @@ std::optional<Control> decodeControl(const QByteArray& packet, QString& error) {
   const auto parsedTags = tags(reader, error);
   if (!parsedTags)
     return {};
+  std::optional<TimeData> time;
+  std::optional<QByteArray> timezone;
   for (const auto& tag : *parsedTags) {
     Reader input(tag);
-    if (input.byte() != 0x0c)
+    const auto id = input.byte();
+    if (id == 0x0f) {
+      if (time || input.remaining() != 10) {
+        error = QStringLiteral("Invalid or duplicate UDP date/time tag.");
+        return {};
+      }
+      TimeData value;
+      value.microseconds = input.dword();
+      value.second = input.byte();
+      value.minute = input.byte();
+      value.hour = input.byte();
+      value.day = input.byte();
+      value.month = input.byte();
+      value.yearSince1900 = input.byte();
+      time = value;
+      continue;
+    }
+    if (id == 0x10) {
+      if (timezone || input.remaining() < 1 || input.remaining() > MaxTimeZoneBytes) {
+        error = QStringLiteral("Invalid or duplicate UDP timezone tag.");
+        return {};
+      }
+      timezone = input.take(input.remaining());
+      continue;
+    }
+    if (id != 0x0c)
       continue;
     if (control.joysticks.size() == MaxJoysticks || input.remaining() < 3) {
       error = QStringLiteral("Invalid joystick tag.");
@@ -178,6 +240,18 @@ std::optional<Control> decodeControl(const QByteArray& packet, QString& error) {
       joystick.povs.append(pov);
     }
     control.joysticks.append(joystick);
+  }
+  if (time.has_value() != timezone.has_value()) {
+    error = QStringLiteral("UDP date/time and timezone must be paired in this profile.");
+    return {};
+  }
+  if (time) {
+    time->timezone = *timezone;
+    if (!validTimeData(*time)) {
+      error = QStringLiteral("Invalid UDP UTC date/time or timezone.");
+      return {};
+    }
+    control.time = time;
   }
   return control;
 }

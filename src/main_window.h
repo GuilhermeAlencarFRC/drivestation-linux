@@ -2,7 +2,9 @@
 
 #include "controller_hub.h"
 #include "demo_session.h"
+#include "network_session.h"
 #include "preferences.h"
+#include "robot_discovery.h"
 
 #include <QElapsedTimer>
 #include <QSet>
@@ -12,6 +14,7 @@
 class QCheckBox;
 class QCloseEvent;
 class QComboBox;
+class QDialog;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -34,10 +37,13 @@ class MainWindow : public QWidget {
   Q_OBJECT
 public:
   explicit MainWindow(PreferenceStore store = PreferenceStore(), QWidget* parent = nullptr,
-                      std::unique_ptr<ControllerBackend> backend = makeSdlControllerBackend());
+                      std::unique_ptr<ControllerBackend> backend = makeSdlControllerBackend(),
+                      DiscoveryTarget discoveryTarget = {});
   ~MainWindow() override;
   DemoSession& session() { return session_; }
   ControllerHub& controllers() { return controllers_; }
+  NetworkSession& network() { return network_; }
+  const RobotDiscovery& discovery() const { return discovery_; }
   void selectTab(int tab);
   void selectRightView(int view);
 
@@ -62,12 +68,20 @@ private:
   void savePreferences();
   void appendMessage(const QString& message);
   void requestEnable();
+  void disableOperation();
+  void emergencyStopOperation();
+  void showRobotConnection();
+  void refreshNetwork();
+  void refreshDiscovery();
   void tick();
 
   PreferenceStore store_;
   Preferences preferences_;
   DemoSession session_;
   ControllerHub controllers_;
+  NetworkSession network_;
+  RobotDiscovery discovery_;
+  bool usingNetwork_ = false;
   bool stoppingRumble_ = false;
   QElapsedTimer tickClock_;
   double lastChartSample_ = -1;
@@ -99,6 +113,21 @@ private:
   QComboBox* station_ = nullptr;
   QLineEdit* gameData_ = nullptr;
   QCheckBox* simulate_ = nullptr;
+  QDialog* connectionDialog_ = nullptr;
+  QLineEdit* robotAddress_ = nullptr;
+  QSpinBox* robotPort_ = nullptr;
+  QSpinBox* localPort_ = nullptr;
+  QCheckBox* useTcp_ = nullptr;
+  QSpinBox* tcpPort_ = nullptr;
+  QSpinBox* discoveryTeam_ = nullptr;
+  QPushButton* findRobot_ = nullptr;
+  QPushButton* cancelDiscovery_ = nullptr;
+  QPushButton* useDiscovery_ = nullptr;
+  QListWidget* discoveryResults_ = nullptr;
+  QLabel* discoveryStatus_ = nullptr;
+  QPushButton* connectRobot_ = nullptr;
+  QPushButton* disconnectRobot_ = nullptr;
+  QLabel* connectionStatus_ = nullptr;
   QListWidget* devices_ = nullptr;
   std::array<QProgressBar*, 6> axes_{};
   std::array<QLabel*, 12> buttons_{};

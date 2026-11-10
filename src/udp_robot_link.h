@@ -1,17 +1,20 @@
 #pragma once
 
+#include "clock_sync.h"
 #include "robot_connection.h"
 #include <QElapsedTimer>
 #include <QHostAddress>
 #include <QObject>
 #include <QTimer>
 #include <QUdpSocket>
+#include <functional>
 
 namespace ds {
 class UdpRobotLink : public QObject {
   Q_OBJECT
 public:
-  explicit UdpRobotLink(QObject* parent = nullptr);
+  using TimeSource = std::function<std::optional<wire::TimeData>(QString&)>;
+  explicit UdpRobotLink(QObject* parent = nullptr, TimeSource timeSource = systemTimeData);
   ~UdpRobotLink() override;
   // Explicit IPv4 endpoint only. No discovery, FMS or TCP handshake in this profile.
   bool start(const QHostAddress& peer, quint16 peerPort, quint16 localPort,
@@ -42,6 +45,8 @@ private:
   QTimer timer_;
   QElapsedTimer clock_;
   RobotConnection connection_;
+  ClockSync clockSync_;
+  TimeSource timeSource_;
   QHostAddress peer_;
   quint16 peerPort_ = 0;
   quint64 sentCount_ = 0;

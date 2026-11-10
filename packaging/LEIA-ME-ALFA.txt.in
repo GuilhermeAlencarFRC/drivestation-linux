@@ -1,0 +1,44 @@
+DriveStation Linux @DRIVESTATION_RELEASE_VERSION@
+ALFA — VERSÃO DE TESTES EM DESENVOLVIMENTO
+
+Esta é uma versão alfa para testes. Ainda não é uma versão final ou homologada.
+O protocolo experimental foi exercitado em loopback com um par próprio.
+A compatibilidade com NI 26.0 e roboRIO físico ainda não foi validada.
+
+COMO ABRIR
+Extraia o arquivo .tar.gz inteiro e execute, dentro da pasta extraída:
+
+  ./INICIAR-ALFA.sh
+
+Para uma demonstração local:
+
+  ./INICIAR-ALFA.sh --demo
+
+O aplicativo inicia desconectado e desabilitado. Para rede experimental, abra
+F10 > Robot connection (UDP/TCP)... e informe endereço e portas explicitamente.
+Connect inicia pacotes desabilitados; Enable é uma ação separada.
+Find roboRIO busca o hostname da equipe via mDNS IPv4. Escolher uma resposta ou
+um hint apenas preenche IPv4; não conecta nem habilita. USB/TE.AM são sugestões
+não verificadas, e mDNS não autentica a identidade do robô.
+
+AMBIENTE DO PACOTE
+Arquitetura: @CMAKE_SYSTEM_PROCESSOR@ / @CMAKE_SYSTEM_NAME@
+Compilado com Qt @Qt6Core_VERSION@ e @DRIVESTATION_BUILD_LIBC@.
+O pacote usa bibliotecas e plugins Qt 6 Widgets/Network e SDL2 do sistema.
+Não inclui Qt/SDL nem é um AppImage. Não precisa de instalação como root.
+Foi verificado no Arch Linux x86_64 do desenvolvimento; outras distribuições
+e versões de bibliotecas ainda precisam de validação. Se faltarem bibliotecas
+ou símbolos, será necessário compilar o projeto no ambiente de destino.
+
+VERIFICAÇÃO LOCAL DE REDE
+  ./bin/drivestation-network-check --json
+
+Esse comando usa somente 127.0.0.1. Não envia comandos para um robô físico.
+
+ESTADO ALFA
+Inclui interface Qt, Practice local, controles SDL, UDP/TCP experimental,
+descritores, Game Data, console/versões, relógio e busca mDNS IPv4 por equipe.
+Ainda faltam validação física da busca, mapeamento NI dos controles, Practice em rede,
+telemetria completa e validação física. Não é uma Driver Station oficial NI/FIRST.
+
+Veja build-info.json e share/doc/DriveStationLinux/README.md para detalhes.
